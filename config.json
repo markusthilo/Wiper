@@ -1,0 +1,16 @@
+{
+    
+	"verify": false,
+	"allbytes": false,
+	"extra": false,
+	"value": 0,
+	"blocksize": 4096,
+	"maxbadblocks": 200,
+	"maxretries": 200,
+	"label": "Volume",
+	"drive": null,
+	"mbr": false,
+	"fs": "ntfs",
+	"log_dir": "C:/Users/user/Documents",
+    "log_name": "%y%m%d_%H%M%S_wiperlog.txt"
+}

@@ -1,0 +1,13 @@
+{
+    "appicon": "appicon.png",
+    "pad_factor": 1,
+    "x_factor": 64,
+    "y_factor": 48,
+    "tree_id": 16,
+    "tree_info": 32,
+    "tree_size": 16,
+    "green_fg": "black",
+    "green_bg": "pale green",
+    "red_fg": "black",
+    "red_bg": "coral"
+}
