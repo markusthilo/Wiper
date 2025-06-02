@@ -6,12 +6,14 @@ from pathlib import Path
 from time import strftime
 from tkinter import Tk, PhotoImage, StringVar, BooleanVar
 from tkinter.font import nametofont
-from tkinter.ttk import Frame, Label, Entry, Button, Style, Combobox, Treeview, Scrollbar
+from tkinter.ttk import Frame, Label, Entry, Button, Style, Combobox, Treeview
+from tkinter.ttk import Scrollbar, Spinbox
 from tkinter.scrolledtext import ScrolledText
 from tkinter.messagebox import askyesno, showerror
 from tkinter.filedialog import askdirectory, askopenfilenames, asksaveasfilename
 from idlelib.tooltip import Hovertip
 from lib.winutils import Drives
+from tkinter import IntVar
 #from lib.worker import Wipe
 
 class WorkThread(Thread):
@@ -83,40 +85,38 @@ class Gui(Tk):
 		self._work_thread = None
 		self.title(f'{self._labels.app_title} v{version}')
 		self.rowconfigure(0, weight=1)
-		self.columnconfigure(1, weight=1)
+		
 		self.rowconfigure(5, weight=1)
+
+		self.columnconfigure(0, weight=1)
+		self.columnconfigure(1, weight=1)
+		self.columnconfigure(2, weight=1)
+
 		self.iconphoto(True, PhotoImage(file=self._app_path / self._defs.appicon))
 		self.protocol('WM_DELETE_WINDOW', self._quit_app)
 		font = nametofont('TkTextFont').actual()
 		font_family = font['family']
-		self.font_size = font['size']
-		min_size_x = self.font_size * self._defs.x_factor
-		min_size_y = self.font_size * self._defs.y_factor
+		self._font_size = font['size']
+		min_size_x = self._font_size * self._defs.x_factor
+		min_size_y = self._font_size * self._defs.y_factor
 		self.minsize(min_size_x , min_size_y)
 		self.geometry(f'{min_size_x}x{min_size_y}')
 		self.resizable(True, True)
-		self._pad = int(self.font_size * self._defs.pad_factor)
-		frame = Frame(self)
-		frame.grid(row=0, column=0, columnspan=2, sticky='nsew')
-
-		self._drive_tree = Treeview(frame,
+		self._pad = int(self._font_size * self._defs.pad_factor)
+		self._id_width = self._font_size * self._defs.tree_id
+		self._info_width = self._font_size * self._defs.tree_info
+		self._size_width = self._font_size * self._defs.tree_size
+		self._drive_frame = Frame(self)
+		self._drive_frame.grid(row=0, column=0, columnspan=3, sticky='nsew')
+		######################### DRIVE TREE ###############################################################
+		self._drive_tree = Treeview(self._drive_frame,
 			selectmode = 'browse',
-			#height=height,
 			columns = ('Info', 'Size'),
 			show = 'tree'
 		)
-
-		#tree.column('size', width=50, anchor='center')
-		self._drive_tree.column('#0',
-			width = self.font_size * self._defs.tree_id, stretch='no'
-		)
-		self._drive_tree.column('Info',
-			minwidth = self.font_size * self._defs.tree_info, stretch = 'yes'	# minwidth=0, width=200, stretch=NO
-		) 
-		self._drive_tree.column('Size',
-			width = self.font_size * self._defs.tree_size, stretch='no'
-		)
-
+		self._drive_tree.column('#0', width=self._id_width, stretch='no')
+		self._drive_tree.column('Info', minwidth=self._info_width, stretch='yes') 
+		self._drive_tree.column('Size', width = self._size_width, stretch='no')
 		drives = Drives()
 		for drive_dict in drives.dump():
 			self._drive_tree.insert('', 'end',
@@ -138,21 +138,89 @@ class Gui(Tk):
 					iid = part_dict['DeviceID']
 				)
 		self._drive_tree.pack(side='right', expand=True, fill='both', padx=self._pad, pady=self._pad)
+		self.bind('<Double-1>', self._select_focus)
+		self._drive_tree.pack(side='left', expand=True)
+		vsb = Scrollbar(self._drive_frame, orient='vertical', command=self._drive_tree.yview)
+		vsb.pack(side='right', fill='y')
+		self._drive_tree.configure(yscrollcommand=vsb.set)
+		Hovertip(self._drive_tree, self._labels.drive_tip)
+		##################################################################################################
+		frame = Frame(self)
+		frame.grid(row=1, column=0, sticky='nwe', pady=(0, self._pad))
+		Label(frame, text=f'{self._labels.value}:').pack(side='left', padx=self._pad)
+		self._value_box = Spinbox(frame, values=tuple(f'{b:02x}' for b in range(0x100)), width=3)
+		self._value_box.pack(side='right', padx=self._pad)
+		self._value_box.set(self._config.value)
+		Hovertip(frame, self._labels.value_tip)
+		frame = Frame(self)
+		frame.grid(row=1, column=1, sticky='nwe', pady=(0, self._pad))
+		Label(frame, text=f'{self._labels.blocksize}:').pack(side='left', padx=self._pad)
+		self._blocksize_box = Spinbox(frame, from_=0, to=0xffff, width=6)
+		self._blocksize_box.pack(side='right', padx=self._pad)
+		self._blocksize_box.set(self._config.blocksize)
+		Hovertip(frame, self._labels.blocksize_tip)
 
-		#self._drive_tree.column('#0')	#, width=width)
-		#self._drive_tree.heading('#0', text='test heading')
+		frame = Frame(self)
+		frame.grid(row=1, column=1, sticky='nwe')
+		Label(frame, text=f'{self._labels.blocksize}:').pack(side='left', padx=self._pad)
+		self._blocksize_box = Spinbox(frame, from_=0, to=0xffff, width=6)
+		self._blocksize_box.pack(side='right', padx=self._pad)
+		self._blocksize_box.set(self._config.blocksize)
+		Hovertip(frame, self._labels.blocksize_tip)
+
+		frame = Frame(self)
+		frame.grid(row=2, column=0, sticky='nwe')
+		Label(frame, text=f'{self._labels.maxbadblocks}:').pack(side='left', padx=self._pad)
+		self._maxbadblocks_box = Spinbox(frame, from_=0, to=0xffff, width=6)
+		self._maxbadblocks_box.pack(side='right', padx=self._pad)
+		self._maxbadblocks_box.set(self._config.maxbadblocks)
+		Hovertip(frame, self._labels.maxbadblocks_tip)
+
+		frame = Frame(self)
+		frame.grid(row=2, column=1, sticky='nwe')
+		Label(frame, text=f'{self._labels.maxretries}:').pack(side='left', padx=self._pad)
+		self._maxretries_box = Spinbox(frame, from_=0, to=0xffff, width=6)
+		self._maxretries_box.pack(side='right', padx=self._pad)
+		self._maxretries_box.set(self._config.maxretries)
+		Hovertip(frame, self._labels.maxretries_tip)
+
+
+		self._task = StringVar(value=self._labels.tasks[self._config.task])
+		self._task_selector = Combobox(self,
+			textvariable = self._task,
+			values = tuple(self._labels.tasks.values()),
+			state = 'readonly',
+		)
+		self._task_selector.grid(row=4, column=0, sticky='nwe', padx=self._pad, pady=self._pad)
+		Hovertip(self._task_selector, self._labels.task_tip)
+		self._create = StringVar(value=self._labels.create[self._config.create])
+		self._create_selector = Combobox(self,
+			textvariable = self._create,
+			values = tuple(self._labels.create.values()),
+			state = 'readonly',
+		)
+		self._create_selector.grid(row=4, column=1, sticky='nwe', padx=self._pad, pady=self._pad)
+		Hovertip(self._create_selector, self._labels.create_tip)
+		self._fs = StringVar(value=self._labels.fs[self._config.fs])
+		self._fs_selector = Combobox(self,
+			textvariable = self._fs,
+			values = tuple(self._labels.fs.values()),
+			state = 'readonly',
+		)
+		self._fs_selector.grid(row=4, column=2, sticky='nwe', padx=self._pad, pady=self._pad)
+		Hovertip(self._fs_selector, self._labels.fs_tip)
 
 		return
-		#if columns:
-		#	for col_text, col_width in columns.items():
-		#		self.heading(col_text, text=col_text.upper())
-		#		self.column(col_text, width=col_width)
-		#if doubleclick:
-		#	self.bind('<Double-1>', doubleclick)
-		self._drive_selector.pack(side='left', expand=True)
-		vsb = Scrollbar(frame, orient='vertical', command=self.yview)
-		vsb.pack(side='right', fill='y')
-		self._drive_selector.configure(yscrollcommand=vsb.set)
+		self._choosen_verify = StringVar(value=self._labels.verify)
+		self._verify_selector = Combobox(self,
+			textvariable = self._choosen_verify,
+			values = list(self._gen_verify_list().values()),
+			state='readonly'
+		)
+		self._verify_selector.pack(side='right', anchor='ne', padx=self._pad, pady=self._pad)
+		self._verify_selector.bind('<<ComboboxSelected>>', self._verify_event)
+		Hovertip(self._verify_selector, self._labels.verify_tip)
+
 		return
 
 	
@@ -212,6 +280,20 @@ class Gui(Tk):
 		self._quit_button.grid(row=6, column=1, sticky='e', padx=self._pad, pady=self._pad)
 		Hovertip(self._quit_button, self._labels.quit_tip)
 		self._init_warning()
+
+	def _select(self):
+		'''Set target'''
+		if focus := self._drive_tree.focus():
+			print(focus)
+		else:
+			print('no focus')
+
+	def _select_focus(self, event):
+		'''Run on double click'''
+		item = self._drive_tree.identify('item', event.x, event.y)
+		print(self._drive_tree.item(item)['text'])
+
+
 
 	def _read_source_paths(self):
 		'''Read paths from text field'''

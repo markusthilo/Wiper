@@ -1,9 +1,8 @@
 {
-    
-	"verify": false,
-	"allbytes": false,
-	"extra": false,
-	"value": 0,
+	"task": "selective",
+	"create": "gpt",
+	"fs": "ntfs",
+	"value": "00",
 	"blocksize": 4096,
 	"maxbadblocks": 200,
 	"maxretries": 200,

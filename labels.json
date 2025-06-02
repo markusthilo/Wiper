@@ -1,8 +1,35 @@
 {
     "app_title": "Wiper",
+    "drive_tip": "Select drive to wipe by double click. Be aware that entire\nphysical drive will be wiped, not a specific partition.",
+    "value": "Byte to write",
+    "value_tip": "Select the byte to overwrite (or to verify).\nThis is a hexadecimal value.",
+    "blocksize": "Block size",
+    "blocksize_tip": "Select the block size to read and write.\nFor SSDs this schould be the size of a memory\npage (4096 might work justr fine).",
+    "maxbadblocks": "Max. bad blocks",
+    "maxbadblocks_tip": "Select the maximum number of bad blocks\nbefore aborting the write operation.",
+    "maxretries": "Max. retries",
+    "maxretries_tip": "Select the maximum number of retries for\nfailed write operations befor aborting.",
+    "tasks": {
+        "selective": "Wipe used blocks/pages",
+        "full": "Overwrite every byte",
+        "extra": "2-pass wipe",
+        "verify": "Do not wipe but verify"
+    },
+    "task_tip": "Select the wipe method (or just verify). The first option is designed for SSDs.\nEvery block (or memory pageg) is checked and will only be overwritten if data is present.",
+    "create": {
+        "gpt": "Create GPT partition table",
+        "mbr": "Create MBR partition table",
+        "none": "Do not touch drive after wiping"
+    },
+    "create_tip": "Select partition table to create after wiping.\n'Create GPT partition table' uses the modern standard.\n'Create MBR partition table' is a legacy method for drives up to 3TB.",
+        "fs": {
+        "ntfs": "Format to NTFS",
+        "fat": "Format to FAT32",
+        "exfat": "Format to exFAT",
+        "none": "Do not format"
+    },
+    "fs_tip": "File system used for the new partition",
 
-
-    
     "directory": "Directory",
     "source_dir_tip": "Add directory to be copied.\nThe field can also be filled\ndirectly (e.g. Ctrl+V).",
     "file_s": "File(s)",
@@ -11,7 +38,6 @@
     "destination_tip": "Select the destination directory for the recursive copy operation.\nThe field can also be filled directly (e.g. Ctrl+V).",
     "hash": "Hash",
     "hash_tip": "Select hash algorithms if calculation is desired.\nThese will be saved in a CSV file in the log directory.",
-    "verify": "Verification",
     "verify_tip": "Select verification method (file size or hash value).\nAfter copying with Robocopy.exe, a comparison with\nthe source files can be performed.",
     "size": "Size",
     "log": "Log",
