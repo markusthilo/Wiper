@@ -81,26 +81,43 @@ class Drives:
 				drives[drive.DeviceID]['Size'] = None
 		return drives
 
-	def dump(self):
+	def get_parents(self):
+		'''Return dict PHYSICALDRIVE: LOGICALDRIVE'''
 		disk2part = {(rel.Antecedent.DeviceID, rel.Dependent.DeviceID)
 			for rel in self._conn.Win32_DiskDriveToDiskPartition()
 		}
 		part2logical = {(rel.Antecedent.DeviceID, rel.Dependent.DeviceID)
 			for rel in self._conn.Win32_LogicalDiskToPartition()
 		}
-		disk2logical = { logical: disk
+		return { logical: disk
 			for disk, part_disk in disk2part
 			for part_log, logical in part2logical
 			if part_disk == part_log
 		}
+
+	def get_parent_of(self, device_id):
+		'''Get parent of given device'''
+		parents = self.get_parents()
+		if device_id.startswith('\\\\.\\PHYSICALDRIVE'):
+			return device_id if device_id in parents.values() else None
+		try:
+			return parents[device_id]
+		except IndexError:
+			return
+
+	def dump(self):
+		'''Return list of all drives'''
+		parents = self.get_parents()
 		log_disks = self.get_logical()
+		drives = list()
 		for device_id, drive_dict in self.get_physical().items():
 			drive = {'DeviceID': device_id} | drive_dict
 			drive['Partitions'] = list()
-			for log_id, disk_id in disk2logical.items():
+			for log_id, disk_id in parents.items():
 				if disk_id == device_id:
 					drive['Partitions'].append({'DeviceID': log_id} | log_disks[log_id])
-			yield drive
+			drives.append(drive)
+		return drives
 
 	def get_free_drive_letter(self):
 		'''Get 1st free drive letter'''
@@ -108,6 +125,27 @@ class Drives:
 		for letter in 'DEFGHIJKLMNOPQRSTUVWXYZ':
 			if letter not in assigned:
 				return letter
+
+	def check_fs_label(self, label, fs):
+		'''Check if string would be a valid file system label'''
+		fs = fs.lower()
+		if fs == 'ntfs':
+			max_len = 32
+			invalid_chars = '/\\*?"\'<>|:+,;=[]'
+		elif fs == 'exfat':
+			max_len = 15
+			invalid_chars = '/\\*?"\'<>|:+,;=[]'
+		elif fs == 'fat32':
+			max_len = 11
+			invalid_chars = '/\\*?"\'<>|:+,;=[]'
+		else:
+			raise ValueError(f'invalid fs: {fs}')
+		if len(label) > max_len:
+			raise ValueError(f'label too long ({max_len} max. for {fs}): "{label}", {len(label)} chars')
+		for char in label:
+			if char in invalid_chars:
+				raise ValueError(f'invalid chaaracter in "{label}": {char}')
+		return label
 
 	def create_partition(self, drive_id, script_path, label='Volume', drive=None, mbr=False, fs='ntfs'):
 		'''Create partition using diskpart'''

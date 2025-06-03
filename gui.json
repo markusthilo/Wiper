@@ -6,7 +6,7 @@
     "tree_id": 16,
     "tree_info": 32,
     "tree_size": 16,
-    "box_width": 24,
+    "box_width": 8,
     "green_fg": "black",
     "green_bg": "pale green",
     "red_fg": "black",

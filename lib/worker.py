@@ -14,10 +14,8 @@ class Wipe:
 	STD_BLOCKSIZE = 4096
 	MAX_BLOCKSIZE = 32768
 
-	def __init__(self, device_id, app_path, labels,
-		verify = False,
-		allbytes = False,
-		extra = False,
+	def __init__(self, device_id, log_path, labels,
+		task = 'selective',
 		value = 0,
 		blocksize = 4096,
 		maxbadblocks = 200,
@@ -26,7 +24,6 @@ class Wipe:
 		drive = None,
 		mbr = False,
 		fs = 'ntfs',
-		log = None,
 		echo = print,
 		kill = None
 	):
