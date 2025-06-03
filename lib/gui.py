@@ -4,6 +4,7 @@
 from threading import Thread, Event
 from pathlib import Path
 from time import strftime
+import os
 from tkinter import Tk, PhotoImage, StringVar
 from tkinter.font import nametofont
 from tkinter.ttk import Frame, Label, Entry, Button, Combobox, Treeview
@@ -58,11 +59,22 @@ class Gui(Tk):
 		'''Open application window'''
 		super().__init__()
 		self._app_path = app_path
+		self._version = version
 		self._config = config
 		self._labels = labels
 		self._defs = gui_defs
+		self._log_path = app_path / 'lastlog.log'
 		self._work_thread = None
-		self.title(f'{self._labels.app_title} v{version}')
+		self._drives = Drives()
+		self._forbidden_ids = self._drives.get_system_ids()	# drives not to selected
+		self._forbidden_ids.add(f'{app_path.drive}')
+		if app_drive_id := self._drives.get_parent_of(app_path.drive):
+			self._forbidden_ids.add(app_drive_id)
+		if home_drive_id := f'{Path().home().drive}':
+			self._forbidden_ids.add(home_drive_id)
+			self._forbidden_ids.add(self._drives.get_parent_of(home_drive_id))
+		self._drive_dump = None	# to check for changes
+		self.title(f'{self._labels.app_title} v{self._version}')	### define the gui ###
 		self.rowconfigure(0, weight=1)
 		self.rowconfigure(5, weight=3)
 		self.columnconfigure(0, weight=1)
@@ -92,8 +104,9 @@ class Gui(Tk):
 		self._drive_tree.column('#0', width=self._id_width, stretch='no')
 		self._drive_tree.column('Info', minwidth=self._info_width, stretch='yes') 
 		self._drive_tree.column('Size', width = self._size_width, stretch='no')
-		self._drives = Drives()
-		self._drive_dump = None
+
+		self._drive_tree.tag_configure('forbidden', foreground=self._defs.red_fg, background=self._defs.red_bg)
+
 		self._gen_drive_tree()
 		self._drive_tree.pack(side='left', expand=True, fill='both')
 		self._drive_tree.bind('<Button-1>', self._select_drive)
@@ -185,14 +198,6 @@ class Gui(Tk):
 		self._warning_state = 'disabled'	# no warning info
 		self._refresh_loop()	# handle warning and observe drives
 
-	def _select_drive(self, event):
-		'''Run on double click'''
-		if item := self._drive_tree.identify('item', event.x, event.y):
-			if device_id := self._drives.get_parent_of(item):
-				self._target_id = device_id
-				self._start_text.set(f'{self._labels.wipe} {self._target_id}')
-				self._start_button.configure(state='normal')
-
 	def _gen_drive_tree(self):
 		'''Refresh drive tree'''
 		new_drive_dump = self._drives.dump()
@@ -200,24 +205,37 @@ class Gui(Tk):
 			self._drive_dump = new_drive_dump
 			self._drive_tree.delete(*self._drive_tree.get_children())
 			for drive_dict in self._drive_dump:
-				self._drive_tree.insert('', 'end',
-					text = drive_dict['DeviceID'],
-					values = (
-						', '.join((drive_dict['Caption'], drive_dict['MediaType'], drive_dict['InterfaceType'])),
-						drive_dict['Size'].readable() if drive_dict['Size'] else ''
-					),
-					iid = drive_dict['DeviceID'],
-					open = True
+				drv_id = drive_dict['DeviceID']
+				values = (
+					', '.join((drive_dict['Caption'], drive_dict['MediaType'], drive_dict['InterfaceType'])),
+					drive_dict['Size'].readable() if drive_dict['Size'] else ''
 				)
+				if drv_id in self._forbidden_ids:
+					self._drive_tree.insert('', 'end', text=drv_id, values=values, iid=drv_id, open=True, tags='forbidden')
+				else:
+					self._drive_tree.insert('', 'end', text=drv_id, values=values, iid=drv_id, open=True)
 				for part_dict in drive_dict['Partitions']:
-					self._drive_tree.insert(drive_dict['DeviceID'], 'end',
-						text = part_dict['DeviceID'],
-						values = (
-							', '.join((part_dict['VolumeName'], part_dict['FileSystem'])),
-							part_dict['Size'].readable() if part_dict['Size'] else ''
-						),
-						iid = part_dict['DeviceID']
+					part_id = part_dict['DeviceID']
+					values = (
+						', '.join((part_dict['VolumeName'], part_dict['FileSystem'])),
+						part_dict['Size'].readable() if part_dict['Size'] else ''
 					)
+					if part_id in self._forbidden_ids:
+						self._drive_tree.insert(drv_id, 'end', text=part_id, values=values, iid=part_id, tags='forbidden')
+					else:
+						self._drive_tree.insert(drv_id, 'end', text=part_id, values=values, iid=part_id)
+
+	def _select_drive(self, event):
+		'''Run on double click'''
+		if item := self._drive_tree.identify('item', event.x, event.y):
+			if item in self._forbidden_ids:
+				self._start_text.set(self._labels.choose_target)
+				self._start_button.configure(state='disabled')
+				return
+			if device_id := self._drives.get_parent_of(item):
+				self._target_id = device_id
+				self._start_text.set(f'{self._labels.wipe} {self._target_id}')
+				self._start_button.configure(state='normal')
 
 	def _refresh_loop(self):
 		'''Show flashing warning'''
@@ -253,8 +271,10 @@ class Gui(Tk):
 			value = int(self._value_box.get(), 16)
 		except Exception as ex:
 			return ex
-		if value < 0 or value >= 0x80000000:
+		if value < 0 or value > 0xff:
 			return ValueError(f'value out of range: {value}')
+		if value % 0x100 != 0:
+			return ValueError(f'invalid value: {value}')
 		self._config.value = value
 
 	def _get_blocksize(self):
@@ -263,7 +283,7 @@ class Gui(Tk):
 			blocksize = int(self._blocksize_box.get())
 		except Exception as ex:
 			return ex
-		if blocksize < 0x100 or blocksize > 0x8000 or blocksize % 0x100 != 0:
+		if blocksize < 0x100 or blocksize >= 0x8000 or blocksize % 0x100 != 0:
 			return ValueError(f'invalid block size: {blocksize}')
 		self._config.blocksize = blocksize
 
@@ -306,7 +326,7 @@ class Gui(Tk):
 	def _get_label(self):
 		'''Get label and verify if it matches file system restrictions'''
 		try:
-			label = self.Drives.check_fs_label(self._label.get(), self._config.fs)
+			label = self._drives.check_fs_label(self._label.get(), self._config.fs)
 		except Exception as ex:
 			return ex
 		self._config.label = label
@@ -335,13 +355,30 @@ class Gui(Tk):
 			showerror(title=self._labels.error, message=f'{type(ex)}: {ex}')
 			return
 		if ex := self._get_label():
-			showerror(title=self._labels.error, message=f'{self._labels.labels_error}\n\n{type(ex)}: {ex}')
+			showerror(title=self._labels.error, message=f'{self._labels.label_error}\n\n{type(ex)}: {ex}')
 			return
-
-
+		try:
+			self._config.save()
+		except:
+			pass
 		self._start_button.configure(state='disabled')
 		self._clear_info()
-		#self._work_thread = WorkThread(self.target_id, self._config, self._labels, self._log_path, self._echo, self._finished)
+		
+		print(self._target_id)
+		print(self._config.task)
+		print(self._config.value)
+		print(self._config.blocksize)
+		print(self._config.maxbadblocks)
+		print(self._config.maxretries)
+		print(self._config.create)
+		print(self._config.fs)
+		print(self._config.label)
+		print(self._labels)
+		print(self._log_path)
+		print(self.echo)
+		print(self.finished)
+
+		#self._work_thread = WorkThread(self.target_id, self._config, self._labels, self._log_path, self.echo, self.finished)
 		#self._work_thread.start()
 
 
@@ -362,6 +399,17 @@ class Gui(Tk):
 				self._work_thread.kill()
 			except:
 				pass
+		self._get_value()
+		self._get_blocksize()
+		self._get_maxbadblocks()
+		self._get_maxretries()
+		self._get_create()
+		self._get_fs()
+		self._get_label()
+		try:
+			self._config.save()
+		except:
+			pass
 		self.destroy()
 
 	def echo(self, *args, end=None):

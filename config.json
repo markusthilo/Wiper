@@ -1,1 +1,1 @@
-{"task": "selective", "create": "gpt", "fs": "ntfs", "value": "00", "blocksize": 4096, "maxbadblocks": 200, "maxretries": 200, "label": "Volume", "drive": null, "mbr": false, "log_dir": "C:/Users/user/Documents", "log_name": "%y%m%d_%H%M%S_wiperlog.txt"}
+{"task": "selective", "create": "gpt", "fs": "ntfs", "value": 0, "blocksize": 4096, "maxbadblocks": 200, "maxretries": 200, "label": "Volume", "drive": null, "mbr": false, "log_dir": "C:/Users/user/Documents", "log_name": "%y%m%d_%H%M%S_wiperlog.txt"}

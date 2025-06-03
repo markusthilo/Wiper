@@ -41,6 +41,7 @@
     "blocksize_error": "Block size has to be an integer",
     "maxbadblocks_error": "Maximum bad blocks before aborting wipe process has to be an integer",
     "maxretries_error": "Maximum retrie attempts (read/write) before aborting wipe process has to be an integer",
+    "label_error": "Invalid volume label",
 
     "warning": "Warning",
     "problems": "Problems occurred.",

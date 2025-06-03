@@ -34,6 +34,8 @@ class Drives:
 	DISKPART_TIMEOUT = 30
 	DISKPART_RETRIES = 10
 	DISKPART_DELAY = 10
+	NTFS_LABEL_CHARS = r'abcdefghijklmnopqrstuvwxyz!§$%&()@-_#=[]{}€'
+	FAT_LABEL_CHARS = r'abcdefghijklmnopqrstuvwxyz!§$%&()@-_#'
 
 	def __init__(self):
 		'''Connect to API'''			
@@ -97,12 +99,13 @@ class Drives:
 
 	def get_parent_of(self, device_id):
 		'''Get parent of given device'''
+		device_id = str(device_id).upper()
 		parents = self.get_parents()
 		if device_id.startswith('\\\\.\\PHYSICALDRIVE'):
 			return device_id if device_id in parents.values() else None
 		try:
 			return parents[device_id]
-		except IndexError:
+		except KeyError:
 			return
 
 	def dump(self):
@@ -119,6 +122,15 @@ class Drives:
 			drives.append(drive)
 		return drives
 
+	def get_system_ids(self):
+		'''Get ids if system drives'''
+		ids = set()
+		for os_drive in self._conn.Win32_OperatingSystem():
+			if os_drive.SystemDrive:
+				ids.add(os_drive.SystemDrive)
+				ids.add(self.get_parent_of(os_drive.SystemDrive))
+		return ids
+
 	def get_free_drive_letter(self):
 		'''Get 1st free drive letter'''
 		assigned = [drive_id.rstrip(':') for drive_id in self.get_logical()]
@@ -131,24 +143,25 @@ class Drives:
 		fs = fs.lower()
 		if fs == 'ntfs':
 			max_len = 32
-			invalid_chars = '/\\*?"\'<>|:+,;=[]'
+			valid_chars = self.NTFS_LABEL_CHARS
 		elif fs == 'exfat':
 			max_len = 15
-			invalid_chars = '/\\*?"\'<>|:+,;=[]'
+			valid_chars = self.FAT_LABEL_CHARS
 		elif fs == 'fat32':
 			max_len = 11
-			invalid_chars = '/\\*?"\'<>|:+,;=[]'
+			valid_chars = self.FAT_LABEL_CHARS
 		else:
 			raise ValueError(f'invalid fs: {fs}')
 		if len(label) > max_len:
 			raise ValueError(f'label too long ({max_len} max. for {fs}): "{label}", {len(label)} chars')
 		for char in label:
-			if char in invalid_chars:
+			if char.lower() not in valid_chars:
 				raise ValueError(f'invalid chaaracter in "{label}": {char}')
 		return label
 
 	def create_partition(self, drive_id, script_path, label='Volume', drive=None, mbr=False, fs='ntfs'):
 		'''Create partition using diskpart'''
+		drive_id = str(drive_id).upper()
 		if drive:
 			drive = drive.rstrip(':\\/')
 		else:
