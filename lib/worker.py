@@ -3,21 +3,16 @@
 
 import logging
 from pathlib import Path
-from time import strftime, perf_counter
-from lib.winutils import Drives
+from lib.winutils import Drives, WinPopen
 from lib.size import Size
 
 class Wipe:
 	'''Wipe disk'''
 
-	MIN_BLOCKSIZE = 512
-	STD_BLOCKSIZE = 4096
-	MAX_BLOCKSIZE = 32768
-
-	def __init__(self, device_id, log_path, app_name, labels,
+	def __init__(self, device_id, log_path, zd_path, app_name, labels,
 		task = 'selective',
 		value = '00',
-		blocksize = 4096,
+		blocksize = 0x1000,
 		maxbadblocks = 200,
 		maxretries = 200,
 		create = 'gpt',
@@ -25,187 +20,85 @@ class Wipe:
 		label = 'Volume',
 		echo = print,
 		kill = None,
-		finish = None
+		finish = None,
+		debug = False
 	):
 		'''Create object'''
 		self._device_id = device_id 		# \\.\PHYSICALDRIVE\X
-		self._app_name = app_name			# name of application with version number
-		self._log_path = log_path			# path to additional log (given by user, None will only write lastlog in app folder)
+		self._log_path = log_path			# path to log file
 		self._labels = labels				# phrases for logging etc. ("language package")
 		self._task = task					# what to do: selective, full, extra or verify
-		self._value = value					# byte to overwrite
-		self._blocksize = blocksize			# blocksize to write
-		self._maxbadblocks = maxbadblocks	# tolerate badblocks before abort/error
-		self._maxretries = maxretries		# number of retries before abort/error
-		self.create = create				# create partition table: gpt, mbr or none
-		self._fs = fs						# new file system
+		self._create = create				# create partition table: gpt, mbr or none
+		self._fs = fs if create else None	# new file system
 		self._label = label					# label of new partition
 		self._echo = echo					# method to show messages (print or from gui)
 		self._kill = kill					# event to stop wipe process
 		self._finish = finish				# method to call when wipe process is finished
+		formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+		logger = logging.getLogger()
+		logger.setLevel(logging.DEBUG if debug else logging.INFO)
+		log_fh = logging.FileHandler(filename=self._log_path, mode='w', encoding='utf-8')
+		log_fh.setFormatter(formatter)
+		logger.addHandler(log_fh)
+		logging.info(self._labels.log_head.replace('#', app_name))
+		logging.debug(f'''Parameters:
+	device to wipe:			{self._device_id}
+	task:					{self._task}
+	value/byte to write:	{value}
+	block size:				{blocksize}
+	max. bad blocks:		{maxbadblocks}
+	max. retries:			{maxretries}
+	create partition table:	{self._create}
+	new file system:		{self._fs}
+	partition/drive label:	{self._label}
+'''
+		)
+		self._cmd = [
+			f'{zd_path}',
+			'-f', value,
+			'-b', f'{blocksize}',
+			'-m', f'{maxbadblocks}',
+			'-r', f'{maxretries}'
+		]
+		if self._task == 'full':
+			self._cmd.append('-a')
+		elif self._task  == 'extra':
+			self._cmd.append('-x')
+		elif self._task  == 'verify':
+			self._cmd.append('-v')
+		self._cmd.append(self._device_id)
+		self._script_path = log_path.parent / 'diskpart_tmp_script.txt'	# path to script for diskpart
+		self._drives = Drives()
+		self._logical_ids = self._drives.get_children_of(self._device_id)
 
 	def run(self):
 		'''Execute copy process (or simulation)'''
-		try:	### start logging ###
-			formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-			logger = logging.getLogger()
-			logger.setLevel(logging.INFO)
-			lastlog_fh = logging.FileHandler(filename=self._app_path/'lastlog.txt', mode='w', encoding='utf-8')
-			lastlog_fh.setFormatter(formatter)
-			logger.addHandler(lastlog_fh)
-			if self._log_path:	# additional log file for the user
-				userlog_fh = logging.FileHandler(filename=self._log_path, mode='w', encoding='utf-8')
-				userlog_fh.setFormatter(formatter)
-				logger.addHandler(userlog_fh)
-			self._robocopy = RoboCopy()
-		except Exception as ex:
-			self._abort(ex)
-		start_time = perf_counter()		### read source structure ###
-		src_dir_paths = set()	# given directories to copy
-		src_file_paths = set()	# given files to copy
-		self._info(self._labels.reading_source)
-		for path in self._src_paths:
-			src_path = path.resolve()
-			if src_path.is_dir():
-				src_dir_paths.add(src_path)
-			elif src_path.is_file():
-				src_file_paths.add(src_path)
+		problems = False
+		self._info(self._labels.executing.replace('#', ' '.join(self._cmd)))
+		print(self._cmd)
+		zd_proc = WinPopen(self._cmd)
+		print(zd_proc)
+		for line in zd_proc.stdout:
+			msg = line.strip()
+			if msg.startswith('...'):
+				self.echo(msg, end='\r')
+			elif msg == '':
+				self._echo('')
 			else:
-				msg = self._labels.invalid_path.replace('#', f'{path}')
-				logging.error(msg)
-				self._echo(msg)
-				raise FileNotFoundError(msg)
-		src_dir_paths = list(src_dir_paths)
-		src_file_paths = list(src_file_paths)
-		files = list()	# all files to copy (including subdirectories): (path, size)
-		total_bytes = Size(0)	# total size of all files to copy
-		for this_src_dir_path in src_dir_paths:
-			for path in this_src_dir_path.rglob('*'):
-				if path.is_file():
-					size = path.stat().st_size
-					files.append((path, size, self._dst_path / path.relative_to(this_src_dir_path.parent)))
-					total_bytes += size
-		for path in src_file_paths:
-			size = path.stat().st_size
-			files.append((path, size, self._dst_path / path.name))
-			total_bytes += size
-		self._info(f'{self._labels.done_reading}: {len(files)} {self._labels.file_s}, {total_bytes.readable()}')
-		if self._simulate:	### sumilating copy process ###
-			self._info(self._labels.starting_simulation)
-			collisions = list()
-			col_cnt = 0
-			for src_path, size, dst_path in files:
-				msg = f'{src_path} ({Size(size).readable()}) -> {dst_path}'
-				if dst_path.exists():
-					self._echo(f'{msg} {self._labels.existing}')
-					collisions.append((src_path, size, dst_path, True))
-					col_cnt += 1
-				else:
-					self._echo(msg)
-					collisions.append((src_path, size, dst_path, False))
-				if self._kill and self._kill.is_set():
-					break
-			if self._tsv_path:	# write simple file list when simulating 
-				with self._tsv_path.open('w', encoding='utf-8') as fh:
-					print('src_path\tsrc_size\tdst_path\tdst_exists', file=fh)
-					for src_path, size, dst_path, exists in collisions:
-						collision = dst_path.name if exists else ''
-						print(f'{src_path}\t{Size(size).readable()}\t{dst_path}\t{collision}', file=fh)
-			if col_cnt:
-				self._info(self._labels.collisions.replace('#', f'{col_cnt}'))
-			if self._kill and self._kill.is_set():
-				self._echo(self._labels.simulation_aborted)
-			else:
-				self._info(self._labels.simulation_finished)
-			logging.shutdown()
-			return
-		if self._hashes:	### start hashing ###
-			self._info(self._labels.starting_hashing)
-			hash_thread = HashThread(files, algorithms=self._hashes)
-			hash_thread.start()
-		for src_path in src_dir_paths:	### copy directories ###
-			dst_path = self._dst_path / src_path.name
-			self._info(self._labels.executing.replace('#',
-				f'{self._robocopy.mk_cmd(src_path, dst_path)}')
-			)
-			self._run_robocopy()
-		for src_path in src_file_paths:	### copy files ###
-			self._info(self._labels.executing.replace('#',
-				f'{self._robocopy.mk_cmd(src_path.parent, self._dst_path, file=src_path.name)}')
-			)
-			self._run_robocopy()
-		self._info(self._labels.robocopy_finished)
-		total_files = len(files)
-		mismatches = 0
-		bad_dst_file_paths = dict()
-		if self._verify == 'size':	### verify files by size ###
-			self._echo_file_progress(total_files, total_files)
-			self._info(self._labels.starting_size_verification)
-			for cnt, (src_path, src_size, dst_path) in enumerate(files, start=1):
-				self._echo_file_progress(total_files, cnt)
-				dst_size = dst_path.stat().st_size
-				if dst_size != src_size:
-					self._warning(self._labels.mismatching_sizes.replace('#',
-						f'{src_path}: {src_size} byte(s), {dst_path}: {dst_size} bytes(s)')
-					)
-					mismatches += 1
-					bad_dst_file_paths[dst_path] = dst_size
-			self._info(self._labels.size_check_finished)
-			if not self._hashes:
-				with self._tsv_path.open('w', encoding='utf-8') as fh:
-					print('src_path\tsrc_size\tdst_path\tbad_dst_size', file=fh)
-					for src_path, src_size, dst_path in files:
-						bad_dst_size = bad_dst_file_paths[dst_path] if dst_path in bad_dst_file_paths else ''
-						print(f'{src_path}\t{src_size}\t{dst_path}\t{bad_dst_size}', file=fh)
-		if self._hashes:	### wait until hashing is finished ###
-			self._info(self._labels.waiting_end_hashing)
-			if hash_thread.is_alive():
-				self._info(self._labels.hashing_in_progress)
-				index = 0
-				while hash_thread.is_alive():
-					self._echo(f'{"|/-\\"[index]}  ', end='\r')
-					index += 1
-					if index > 3:
-						index = 0
-					sleep(.25)
-			self._info(self._labels.hashing_finished)
-		if self._verify and self._verify != 'size':	### verify by hash value ###
-			bad_dst_hash = ''
-			self._info(self._labels.starting_hash_verification)
-			with self._tsv_path.open('w', encoding='utf-8') as fh:
-				print(f'{"\t".join(hash_thread.keys)}\tbad_{self._verify}', file=fh)
-				for cnt, hash_set in enumerate(hash_thread.files, start=1):
-					self._echo_file_progress(total_files, cnt)
-					dst_hash = FileHash.hashsum(hash_set['dst_path'], algorithm=self._verify)
-					if dst_hash != hash_set[self._verify]:
-						self._warning(self._labels.mismatching_hashes.replace('#',
-							f'{hash_set["src_path"]}: {hash_set[self._verify]}, {hash_set["dst_path"]}: {dst_hash}')
-						)
-						mismatches += 1
-						bad_dst_hash = dst_hash
-					else:
-						bad_dst_hash = ''
-					print(f'{"\t".join(f'{hash_set[key]}' for key in hash_thread.keys)}\t{bad_dst_hash}', file=fh)
-			self._info(self._labels.hash_check_finished.replace('#', f'{self._verify}'))
-		if self._hashes and not self._verify:	### write tsv file without verification ###
-			with self._tsv_path.open('w', encoding='utf-8') as fh:
-				print(f'{"\t".join(hash_thread.keys)}', file=fh)
-				for cnt, hash_set in enumerate(hash_thread.files, start=1):
-					self._echo_file_progress(total_files, cnt)
-					print(f'{"\t".join(f'{hash_set[key]}' for key in hash_thread.keys)}', file=fh)
-		if self._hashes and self._verify == 'size':	### write tsv file with size verification ###
-			with self._tsv_path.open('w', encoding='utf-8') as fh:
-				print(f'{"\t".join(hash_thread.keys)}\tbad_dst_size', file=fh)
-				for cnt, hash_set in enumerate(hash_thread.files, start=1):
-					bad_dst_size = bad_dst_file_paths[hash_set['dst_path']] if hash_set['dst_path'] in bad_dst_file_paths else ''
-					print(f'{"\t".join(f'{hash_set[key]}' for key in hash_thread.keys)}\t{bad_dst_size}', file=fh)
-		end_time = perf_counter()
-		delta = end_time - start_time
-		self._info(self._labels.copy_finished.replace('#', f'{timedelta(seconds=delta)}'))
-		if mismatches:
-			self._warning(self._labels.mismatches.replace('#', f'{mismatches}'))
+				self._info(msg)
+		if zd_proc.stderr:
+			self._error(zd_proc.stderr.read())
+			problems = True
+
+		if self._task != 'verify' and self._create:
+			self._drives.create_partition(self._drive_id, script_path, label='Volume', drive=None, mbr=False, fs='ntfs'):
+			
+		if problems:
+			self._warning(self._labels.problems)
+		else:
+			self._info(self._labels.all_done)
 		logging.shutdown()
-		return 'error' if mismatches else 'green'
+		return 'error' if problems else 'green'
 
 	def _info(self, msg):
 		'''Log info and echo message'''
@@ -258,6 +151,3 @@ class Wipe:
 			self._error(ex)
 			raise ex
 
-	def	_echo_file_progress(self, total, this):
-		'''Show progress of processing files'''
-		self._echo(f'{this} {self._labels.of_files.replace("#", f"{total}")}, {int(100*this/total)}%', end='\r')

@@ -3,48 +3,25 @@
 
 from threading import Thread, Event
 from pathlib import Path
-from time import strftime
-import os
 from tkinter import Tk, PhotoImage, StringVar
 from tkinter.font import nametofont
 from tkinter.ttk import Frame, Label, Entry, Button, Combobox, Treeview
 from tkinter.ttk import Scrollbar, Spinbox
 from tkinter.scrolledtext import ScrolledText
-from tkinter.messagebox import askyesno, showerror, askokcancel
-from tkinter.filedialog import askdirectory, askopenfilenames, asksaveasfilename
+from tkinter.messagebox import showerror, askokcancel
 from idlelib.tooltip import Hovertip
+from lib.worker import Wipe
 from lib.winutils import Drives
-#from lib.worker import Wipe
 
 class WorkThread(Thread):
 	'''The worker has tu run as thread not to freeze GUI/Tk'''
 
-	def __init__(self, target_id, config, labels, log_path, app_name, echo, finish
-	):
+	def __init__(self, target_id, config, labels, log_path, zd_path, app_name, echo, finish):
 		'''Pass arguments to worker'''
-
-		print(target_id)
-		print(config.task)
-		print(config.value)
-		print(config.blocksize)
-		print(config.maxbadblocks)
-		print(config.maxretries)
-		print(config.create)
-		print(config.fs)
-		print(log_path)
-		print(app_name)
-		self._finish = finish
-		return
-
-	def start(self):	### DEBUG ###
-		returncode = 'green'
-		self._finish(returncode)
-		return
-
 		super().__init__()
 		self._finish = finish
 		self._kill_event = Event()
-		self._worker = Wipe(target_id, log_path, app_name, labels,
+		self._worker = Wipe(target_id, log_path, zd_path, app_name, labels,
 			task = config.task,
 			value = config.value,
 			blocksize = config.blocksize,
@@ -65,20 +42,20 @@ class WorkThread(Thread):
 	def run(self):
 		'''Run thread'''
 		#try:
-		#returncode = self._worker.run()
+		returncode = self._worker.run()
 		#except:
 		#	returncode = 'error'
-		returncode = 'green'
 		self._finish(returncode)
 
 class Gui(Tk):
 	'''GUI look and feel'''
 
-	def __init__(self, log_path, icon_path, app_name, config, gui_defs, labels):
+	def __init__(self, log_path, icon_path, zd_path, app_name, config, gui_defs, labels):
 		'''Open application window'''
 		super().__init__()
 		self._log_path = log_path
 		self._app_name = app_name
+		self._zd_path = zd_path
 		self._config = config
 		self._labels = labels
 		self._defs = gui_defs
@@ -403,6 +380,7 @@ class Gui(Tk):
 			self._config,
 			self._labels,
 			self._log_path,
+			self._zd_path,
 			self._app_name,
 			self.echo,
 			self.finished
@@ -412,7 +390,7 @@ class Gui(Tk):
 	def _quit_app(self):
 		'''Quit app, ask when wipe processs is running'''
 		if self._work_thread:
-			if not askyesno(title=self._labels.warning, message=self._labels.running_warning):
+			if not askokcancel(title=self._labels.warning, message=self._labels.running_warning):
 				return
 			try:
 				self._work_thread.kill()

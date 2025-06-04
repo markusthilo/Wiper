@@ -43,9 +43,12 @@
     "label_error": "Invalid volume label",
     "warning": "Warning",
     "wipe_warning": "If you continue with OK, all data of\n\n#\n\nwill be erased.\n\nAre you shure? Select CANCEL to abort.",
+
+    "running_warning": "Copy process is running!\nDo you want to abort the copy process and exit the application?",
+
+    "log_head": "#\n\nThis software erases data of entire physical drives by overwriting data with option to treat SSDs gently\nAuthor: Markus Thilo\nLicense: GPL-3\nProject page: https://github.com/markusthilo/Wiper\n",
+    "executing": "Executing: #",
+    
     "problems": "Problems occurred.",
-    "of_files": "of # files",
-    "copy_finished": "Done - copying took # (hours, minutes, seconds)",
-    "mismatches": "There were # mismatch(es)",
-    "running_warning": "Copy process is running!\nDo you want to abort the copy process and exit the application?"
+    "all_done": "All done"
 }

@@ -17,10 +17,11 @@ __parent_path__ = Path(__file__).parent if Path(__executable__).stem == 'python'
 
 if __name__ == '__main__':  # start here when run as application
 	Gui(
-		__parent_path__ / 'lastlog.log',
-		__parent_path__ / 'appicon.png',
+		__parent_path__.joinpath('lastlog.log').absolute(),
+		__parent_path__.joinpath('appicon.png').absolute(),
+		__parent_path__.joinpath('zd-win.exe').absolute(),
 		f'Wiper v{__version__}',
-		Config(__parent_path__ / 'config.json'),
-		Config(__parent_path__ / 'gui.json'),
-		Config(__parent_path__ / 'labels.json')
+		Config(__parent_path__.joinpath('config.json')),
+		Config(__parent_path__.joinpath('gui.json')),
+		Config(__parent_path__.joinpath('labels.json'))
 	).mainloop()

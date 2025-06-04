@@ -8,6 +8,7 @@ from lib.config import Config
 worker = Wipe(
         '\\\\.\\PHYSICALDRIVE1',
         Path(__file__).parent / 'lastlog.txt',
+		Path(__file__).parent / 'zd-win.exe',
         'Wiper Testing',
         Config(Path(__file__).parent / 'labels.json'),
 		task = 'selective',
@@ -17,5 +18,7 @@ worker = Wipe(
 		maxretries = 200,
 		create = 'gpt',
 		fs = 'ntfs',
-		label = 'Volume'
+		label = 'Volume',
+		debug = True
 )
+print(worker.run())

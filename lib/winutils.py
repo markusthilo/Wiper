@@ -15,18 +15,15 @@ class WinPopen(Popen):
 		self._cmd = cmd
 		startupinfo = STARTUPINFO()
 		startupinfo.dwFlags |= STARTF_USESHOWWINDOW
-		super().__init__(self._cmd,
+		super().__init__(cmd,
 			stdout = PIPE,
-			stderr = STDOUT,
+			#stderr = STDOUT,
+			stderr = PIPE,
 			encoding = 'utf-8',
 			errors = 'ignore',
 			universal_newlines = True,
 			startupinfo = startupinfo
 		)
-
-	def __repr__(self):
-		'''Return command line as string'''
-		return ' '.join(f"'{item}'" if isinstance(item, Path) else f'{item}' for item in self._cmd)
 
 class Drives:
 	'''Use WMI to get infos about drives'''
@@ -184,13 +181,10 @@ class Drives:
 			table = 'mbr'
 		else:
 			table = 'gpt'
-		script_path.write_text(f'''select disk {drive_id[17:]}
-clean
-convert {table}
-create partition primary
-format quick fs={fs} label={label}
-assign letter={drive}
-''')
+		script = f'select disk {drive_id[17:]}\nclean\nconvert {table}\n'
+		if fs:
+			script += f'create partition primary\nformat quick fs={fs} label={label}\nassign letter={drive}\n'
+		script_path.write_text(script)
 		proc = WinPopen([f'diskpart', '/s', f'{script_path}'])
 		for line in proc.stdout:
 			print(line.rstrip())
