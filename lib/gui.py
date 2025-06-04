@@ -31,7 +31,6 @@ class WorkThread(Thread):
 		print(config.maxretries)
 		print(config.create)
 		print(config.fs)
-		print(config.label)
 		print(labels)
 		print(log_path)
 		self._finish = finish
@@ -96,7 +95,7 @@ class Gui(Tk):
 		self._drive_dump = None	# to check for changes
 		self.title(f'{self._labels.app_title} v{self._version}')	### define the gui ###
 		self.rowconfigure(0, weight=1)
-		self.rowconfigure(5, weight=3)
+		self.rowconfigure(5, weight=4)
 		self.columnconfigure(0, weight=1)
 		self.columnconfigure(1, weight=1)
 		self.columnconfigure(2, weight=1)
@@ -124,9 +123,7 @@ class Gui(Tk):
 		self._drive_tree.column('#0', width=self._id_width, stretch='no')
 		self._drive_tree.column('Info', minwidth=self._info_width, stretch='yes') 
 		self._drive_tree.column('Size', width = self._size_width, stretch='no')
-
 		self._drive_tree.tag_configure('forbidden', foreground=self._defs.red_fg, background=self._defs.red_bg)
-
 		self._gen_drive_tree()
 		self._drive_tree.pack(side='left', expand=True, fill='both')
 		self._drive_tree.bind('<Button-1>', self._select_drive)
@@ -226,20 +223,26 @@ class Gui(Tk):
 			self._drive_tree.delete(*self._drive_tree.get_children())
 			for drive_dict in self._drive_dump:
 				drv_id = drive_dict['DeviceID']
-				values = (
-					', '.join((drive_dict['Caption'], drive_dict['MediaType'], drive_dict['InterfaceType'])),
-					drive_dict['Size'].readable() if drive_dict['Size'] else ''
-				)
+				infos = list()
+				if drive_dict['Caption']:
+					infos.append(drive_dict['Caption'])
+				if drive_dict['MediaType']:
+					infos.append(drive_dict['MediaType'])
+				if drive_dict['InterfaceType']:
+					infos.append(drive_dict['InterfaceType'])
+				values = (', '.join(infos), drive_dict['Size'].readable() if drive_dict['Size'] else '')
 				if drv_id in self._forbidden_ids:
 					self._drive_tree.insert('', 'end', text=drv_id, values=values, iid=drv_id, open=True, tags='forbidden')
 				else:
 					self._drive_tree.insert('', 'end', text=drv_id, values=values, iid=drv_id, open=True)
 				for part_dict in drive_dict['Partitions']:
 					part_id = part_dict['DeviceID']
-					values = (
-						', '.join((part_dict['VolumeName'], part_dict['FileSystem'])),
-						part_dict['Size'].readable() if part_dict['Size'] else ''
-					)
+					infos = list()
+					if part_dict['VolumeName']:
+						infos.append(part_dict['VolumeName'])
+					if part_dict['FileSystem']:
+						infos.append(part_dict['FileSystem'])
+					values = (', '.join(infos), part_dict['Size'].readable() if part_dict['Size'] else '')
 					if part_id in self._forbidden_ids:
 						self._drive_tree.insert(drv_id, 'end', text=part_id, values=values, iid=part_id, tags='forbidden')
 					else:
@@ -252,10 +255,11 @@ class Gui(Tk):
 				self._start_text.set(self._labels.choose_target)
 				self._start_button.configure(state='disabled')
 				return
-			if device_id := self._drives.get_parent_of(item):
-				self._target_id = device_id
-				self._start_text.set(f'{self._labels.wipe} {self._target_id}')
-				self._start_button.configure(state='normal')
+			self._target_id = self._drives.get_parent_of(item)
+			self._start_text.set(f'{self._labels.wipe} {self._target_id}')
+			self._start_button.configure(state='normal')
+			self._info_text.configure(foreground=self._info_fg, background=self._info_bg)
+			self._warning_state = 'stop'
 
 	def _refresh_loop(self):
 		'''Show flashing warning'''
@@ -276,6 +280,14 @@ class Gui(Tk):
 			self._refresh_counter = 0
 			self._gen_drive_tree()
 		self.after(500, self._refresh_loop)
+
+	def _clear_info(self):
+		'''Clear info text'''
+		self._info_text.configure(state='normal')
+		self._info_text.delete('1.0', 'end')
+		self._info_text.configure(state='disabled')
+		self._info_text.configure(foreground=self._info_fg, background=self._info_bg)
+		self._warning_state = 'stop'
 
 	def _get_task(self):
 		'''Get task'''
@@ -390,14 +402,6 @@ class Gui(Tk):
 		self._work_thread = WorkThread(self._target_id, self._config, self._labels, self._log_path, self.echo, self.finished)
 		self._work_thread.start()
 
-	def _clear_info(self):
-		'''Clear info text'''
-		self._info_text.configure(state='normal')
-		self._info_text.delete('1.0', 'end')
-		self._info_text.configure(state='disabled')
-		self._info_text.configure(foreground=self._info_fg, background=self._info_bg)
-		self._warning_state = 'stop'
-
 	def _quit_app(self):
 		'''Quit app, ask when wipe processs is running'''
 		if self._work_thread:
@@ -441,6 +445,4 @@ class Gui(Tk):
 			showerror(title=self._labels.warning, message=self._labels.problems)
 		elif returncode == 'green':
 			self._info_text.configure(foreground=self._defs.green_fg, background=self._defs.green_bg)
-			self._source_text.delete('1.0', 'end')
-			self._destination.set('')
-		self._start_button.configure(state='normal')
+		self._start_text.set(self._labels.choose_target)

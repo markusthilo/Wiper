@@ -100,9 +100,11 @@ class Drives:
 	def get_parent_of(self, device_id):
 		'''Get parent of given device'''
 		device_id = str(device_id).upper()
-		parents = self.get_parents()
 		if device_id.startswith('\\\\.\\PHYSICALDRIVE'):
-			return device_id if device_id in parents.values() else None
+			return device_id
+		parents = self.get_parents()
+		#if device_id.startswith('\\\\.\\PHYSICALDRIVE'):
+		#	return device_id# if device_id in parents.values() else None
 		try:
 			return parents[device_id]
 		except KeyError:
