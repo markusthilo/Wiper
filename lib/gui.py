@@ -10,7 +10,7 @@ from tkinter.font import nametofont
 from tkinter.ttk import Frame, Label, Entry, Button, Combobox, Treeview
 from tkinter.ttk import Scrollbar, Spinbox
 from tkinter.scrolledtext import ScrolledText
-from tkinter.messagebox import askyesno, showerror
+from tkinter.messagebox import askyesno, showerror, askokcancel
 from tkinter.filedialog import askdirectory, askopenfilenames, asksaveasfilename
 from idlelib.tooltip import Hovertip
 from lib.winutils import Drives
@@ -22,19 +22,38 @@ class WorkThread(Thread):
 	def __init__(self, target_id, config, labels, log_path, echo, finish
 	):
 		'''Pass arguments to worker'''
+
+		print(target_id)
+		print(config.task)
+		print(config.value)
+		print(config.blocksize)
+		print(config.maxbadblocks)
+		print(config.maxretries)
+		print(config.create)
+		print(config.fs)
+		print(config.label)
+		print(labels)
+		print(log_path)
+		self._finish = finish
+		return
+
+	def start(self):	### DEBUG ###
+		returncode = 'green'
+		self._finish(returncode)
+		return
+
 		super().__init__()
 		self._finish = finish
 		self._kill_event = Event()
-		self._worker = Wipe(device_id, log_path, labels,
+		self._worker = Wipe(target_id, log_path, labels,
 			task = config.task,
-			value = value,
-			blocksize = blocksize,
-			maxbadblocks = maxbadblocks,
-			maxretries = maxretries,
-			label = label,
-			drive = drive,
-			mbr = mbr,
-			fs = fs,
+			value = config.value,
+			blocksize = config.blocksize,
+			maxbadblocks = config.maxbadblocks,
+			maxretries = config.maxretries,
+			label = config.label,
+			drive = config.drive,
+			fs = config.fs,
 			echo = echo,
 			kill = self._kill_event,
 			finish = self._finish
@@ -47,15 +66,16 @@ class WorkThread(Thread):
 	def run(self):
 		'''Run thread'''
 		#try:
-		returncode = self._worker.run()
+		#returncode = self._worker.run()
 		#except:
 		#	returncode = 'error'
+		returncode = 'green'
 		self._finish(returncode)
 
 class Gui(Tk):
 	'''GUI look and feel'''
 
-	def __init__(self, app_path, version, config, gui_defs, labels):
+	def __init__(self, app_path, log_path, version, config, gui_defs, labels):
 		'''Open application window'''
 		super().__init__()
 		self._app_path = app_path
@@ -63,7 +83,7 @@ class Gui(Tk):
 		self._config = config
 		self._labels = labels
 		self._defs = gui_defs
-		self._log_path = app_path / 'lastlog.log'
+		self._log_path = log_path
 		self._work_thread = None
 		self._drives = Drives()
 		self._forbidden_ids = self._drives.get_system_ids()	# drives not to selected
@@ -273,9 +293,7 @@ class Gui(Tk):
 			return ex
 		if value < 0 or value > 0xff:
 			return ValueError(f'value out of range: {value}')
-		if value % 0x100 != 0:
-			return ValueError(f'invalid value: {value}')
-		self._config.value = value
+		self._config.value = f'{value:02x}'
 
 	def _get_blocksize(self):
 		'''Get block size'''
@@ -333,6 +351,11 @@ class Gui(Tk):
 
 	def _start(self):
 		'''Start wiping'''
+		target = self._target_id
+		if logical := self._drives.get_children_of(self._target_id):
+			target += f' ({", ".join(logical)})'
+		if not askokcancel(title=self._labels.warning, message=self._labels.wipe_warning.replace('#', target)):
+			return
 		if ex := self._get_task():
 			showerror(title=self._labels.error, message=f'{type(ex)}: {ex}')
 			return
@@ -351,36 +374,21 @@ class Gui(Tk):
 		if ex := self._get_create():
 			showerror(title=self._labels.error, message=f'{type(ex)}: {ex}')
 			return
-		if ex := self._get_fs():
-			showerror(title=self._labels.error, message=f'{type(ex)}: {ex}')
-			return
-		if ex := self._get_label():
-			showerror(title=self._labels.error, message=f'{self._labels.label_error}\n\n{type(ex)}: {ex}')
-			return
+		if self._config.create == 'none':
+			if ex := self._get_fs():
+				showerror(title=self._labels.error, message=f'{type(ex)}: {ex}')
+				return
+			if ex := self._get_label():
+				showerror(title=self._labels.error, message=f'{self._labels.label_error}\n\n{type(ex)}: {ex}')
+				return
 		try:
 			self._config.save()
 		except:
 			pass
 		self._start_button.configure(state='disabled')
 		self._clear_info()
-		
-		print(self._target_id)
-		print(self._config.task)
-		print(self._config.value)
-		print(self._config.blocksize)
-		print(self._config.maxbadblocks)
-		print(self._config.maxretries)
-		print(self._config.create)
-		print(self._config.fs)
-		print(self._config.label)
-		print(self._labels)
-		print(self._log_path)
-		print(self.echo)
-		print(self.finished)
-
-		#self._work_thread = WorkThread(self.target_id, self._config, self._labels, self._log_path, self.echo, self.finished)
-		#self._work_thread.start()
-
+		self._work_thread = WorkThread(self._target_id, self._config, self._labels, self._log_path, self.echo, self.finished)
+		self._work_thread.start()
 
 	def _clear_info(self):
 		'''Clear info text'''

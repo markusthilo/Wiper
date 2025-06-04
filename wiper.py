@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 __author__ = 'Markus Thilo'
-__version__ = '0.0.1_2025-06-03'
+__version__ = '0.0.1_2025-06-04'
 __license__ = 'GPL-3'
 __email__ = 'markus.thilomarkus@gmail.com'
 __status__ = 'Testing'
@@ -18,6 +18,7 @@ __parent_path__ = Path(__file__).parent if Path(__executable__).stem == 'python'
 if __name__ == '__main__':  # start here when run as application
 	Gui(
 		__parent_path__,
+		__parent_path__ / 'lastlog.log',
 		__version__,
 		Config(__parent_path__ / 'config.json'),
 		Config(__parent_path__ / 'gui.json'),

@@ -42,8 +42,8 @@
     "maxbadblocks_error": "Maximum bad blocks before aborting wipe process has to be an integer",
     "maxretries_error": "Maximum retrie attempts (read/write) before aborting wipe process has to be an integer",
     "label_error": "Invalid volume label",
-
     "warning": "Warning",
+    "wipe_warning": "If you continue with OK, all data of\n\n#\n\nwill be erased.\n\nAre you shure? Select CANCEL to abort.",
     "problems": "Problems occurred.",
     "of_files": "of # files",
     "copy_finished": "Done - copying took # (hours, minutes, seconds)",

@@ -84,14 +84,14 @@ class Drives:
 		return drives
 
 	def get_parents(self):
-		'''Return dict PHYSICALDRIVE: LOGICALDRIVE'''
+		'''Return dict LOGICALDRIVE: PHYSICALDRIVE'''
 		disk2part = {(rel.Antecedent.DeviceID, rel.Dependent.DeviceID)
 			for rel in self._conn.Win32_DiskDriveToDiskPartition()
 		}
 		part2logical = {(rel.Antecedent.DeviceID, rel.Dependent.DeviceID)
 			for rel in self._conn.Win32_LogicalDiskToPartition()
 		}
-		return { logical: disk
+		return {logical: disk
 			for disk, part_disk in disk2part
 			for part_log, logical in part2logical
 			if part_disk == part_log
@@ -107,6 +107,15 @@ class Drives:
 			return parents[device_id]
 		except KeyError:
 			return
+
+	def get_children_of(self, device_id):
+		'''Return logical drives / partitions of given physical drive'''
+		part2logical = {rel.Antecedent.DeviceID: rel.Dependent.DeviceID
+			for rel in self._conn.Win32_LogicalDiskToPartition()
+		}
+		return {part2logical[rel.Dependent.DeviceID] for rel in self._conn.Win32_DiskDriveToDiskPartition()
+			if rel.Antecedent.DeviceID == device_id
+		}
 
 	def dump(self):
 		'''Return list of all drives'''
