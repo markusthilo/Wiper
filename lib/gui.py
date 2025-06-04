@@ -19,7 +19,7 @@ from lib.winutils import Drives
 class WorkThread(Thread):
 	'''The worker has tu run as thread not to freeze GUI/Tk'''
 
-	def __init__(self, target_id, config, labels, log_path, echo, finish
+	def __init__(self, target_id, config, labels, log_path, app_name, echo, finish
 	):
 		'''Pass arguments to worker'''
 
@@ -31,8 +31,8 @@ class WorkThread(Thread):
 		print(config.maxretries)
 		print(config.create)
 		print(config.fs)
-		print(labels)
 		print(log_path)
+		print(app_name)
 		self._finish = finish
 		return
 
@@ -44,15 +44,15 @@ class WorkThread(Thread):
 		super().__init__()
 		self._finish = finish
 		self._kill_event = Event()
-		self._worker = Wipe(target_id, log_path, labels,
+		self._worker = Wipe(target_id, log_path, app_name, labels,
 			task = config.task,
 			value = config.value,
 			blocksize = config.blocksize,
 			maxbadblocks = config.maxbadblocks,
 			maxretries = config.maxretries,
-			label = config.label,
-			drive = config.drive,
+			create = config.create,
 			fs = config.fs,
+			label = config.label,
 			echo = echo,
 			kill = self._kill_event,
 			finish = self._finish
@@ -74,32 +74,31 @@ class WorkThread(Thread):
 class Gui(Tk):
 	'''GUI look and feel'''
 
-	def __init__(self, app_path, log_path, version, config, gui_defs, labels):
+	def __init__(self, log_path, icon_path, app_name, config, gui_defs, labels):
 		'''Open application window'''
 		super().__init__()
-		self._app_path = app_path
-		self._version = version
+		self._log_path = log_path
+		self._app_name = app_name
 		self._config = config
 		self._labels = labels
 		self._defs = gui_defs
-		self._log_path = log_path
 		self._work_thread = None
 		self._drives = Drives()
 		self._forbidden_ids = self._drives.get_system_ids()	# drives not to selected
-		self._forbidden_ids.add(f'{app_path.drive}')
-		if app_drive_id := self._drives.get_parent_of(app_path.drive):
-			self._forbidden_ids.add(app_drive_id)
+		this_drive_id = f'{Path('__file__')}'
+		self._forbidden_ids.add(this_drive_id)
+		self._forbidden_ids.add(self._drives.get_parent_of(this_drive_id))
 		if home_drive_id := f'{Path().home().drive}':
 			self._forbidden_ids.add(home_drive_id)
 			self._forbidden_ids.add(self._drives.get_parent_of(home_drive_id))
 		self._drive_dump = None	# to check for changes
-		self.title(f'{self._labels.app_title} v{self._version}')	### define the gui ###
+		self.title(self._app_name)	### define the gui ###
 		self.rowconfigure(0, weight=1)
 		self.rowconfigure(5, weight=4)
 		self.columnconfigure(0, weight=1)
 		self.columnconfigure(1, weight=1)
 		self.columnconfigure(2, weight=1)
-		self.iconphoto(True, PhotoImage(file=self._app_path / self._defs.appicon))
+		self.iconphoto(True, PhotoImage(file=icon_path))
 		self.protocol('WM_DELETE_WINDOW', self._quit_app)
 		font = nametofont('TkTextFont').actual()
 		font_family = font['family']
@@ -399,7 +398,15 @@ class Gui(Tk):
 			pass
 		self._start_button.configure(state='disabled')
 		self._clear_info()
-		self._work_thread = WorkThread(self._target_id, self._config, self._labels, self._log_path, self.echo, self.finished)
+		self._work_thread = WorkThread(
+			self._target_id,
+			self._config,
+			self._labels,
+			self._log_path,
+			self._app_name,
+			self.echo,
+			self.finished
+		)
 		self._work_thread.start()
 
 	def _quit_app(self):

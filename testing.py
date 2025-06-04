@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from lib.winutils import Drives
+from pathlib import Path
+from lib.worker import Wipe
+from lib.config import Config
 
-drives = Drives()
-
-print(
-    drives.get_children_of('\\\\.\\PHYSICALDRIVE1')
+worker = Wipe(
+        '\\\\.\\PHYSICALDRIVE1',
+        Path(__file__).parent / 'lastlog.txt',
+        'Wiper Testing',
+        Config(Path(__file__).parent / 'labels.json'),
+		task = 'selective',
+		value = '00',
+		blocksize = 4096,
+		maxbadblocks = 200,
+		maxretries = 200,
+		create = 'gpt',
+		fs = 'ntfs',
+		label = 'Volume'
 )

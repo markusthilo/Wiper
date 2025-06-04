@@ -14,37 +14,35 @@ class Wipe:
 	STD_BLOCKSIZE = 4096
 	MAX_BLOCKSIZE = 32768
 
-	def __init__(self, device_id, log_path, labels,
+	def __init__(self, device_id, log_path, app_name, labels,
 		task = 'selective',
-		value = 0,
+		value = '00',
 		blocksize = 4096,
 		maxbadblocks = 200,
 		maxretries = 200,
-		label = 'Volume',
-		drive = None,
-		mbr = False,
+		create = 'gpt',
 		fs = 'ntfs',
+		label = 'Volume',
 		echo = print,
-		kill = None
+		kill = None,
+		finish = None
 	):
 		'''Create object'''
 		self._device_id = device_id 		# \\.\PHYSICALDRIVE\X
-		self._app_path = app_path			# root directory of robocopygui.py or robocopygui.exe
+		self._app_name = app_name			# name of application with version number
+		self._log_path = log_path			# path to additional log (given by user, None will only write lastlog in app folder)
 		self._labels = labels				# phrases for logging etc. ("language package")
-		self._verify = verify				# True to verify (no wiping)
-		self._allbytes = allbytes			# 1-pass wipe but write every byte instead of checking before
-		self._extra = extra					# 2-pass wipe
+		self._task = task					# what to do: selective, full, extra or verify
 		self._value = value					# byte to overwrite
 		self._blocksize = blocksize			# blocksize to write
 		self._maxbadblocks = maxbadblocks	# tolerate badblocks before abort/error
 		self._maxretries = maxretries		# number of retries before abort/error
-		self._label = label					# Label of new partition
-		self._drive = drive					# new drive letter
-		self._mbr = mbr						# mbr instead of gpt
+		self.create = create				# create partition table: gpt, mbr or none
 		self._fs = fs						# new file system
-		self._log_path = log				# path to additional log (given by user, None will only write lastlog in app folder)
+		self._label = label					# label of new partition
 		self._echo = echo					# method to show messages (print or from gui)
 		self._kill = kill					# event to stop wipe process
+		self._finish = finish				# method to call when wipe process is finished
 
 	def run(self):
 		'''Execute copy process (or simulation)'''

@@ -1,5 +1,4 @@
 {
-    "app_title": "Wiper",
     "drive_tip": "Select drive to wipe by double clicking. Be aware that\nentire physical drive will be wiped, not a specific partition.",
     "value": "Byte to write",
     "value_tip": "Select the byte to overwrite (or to verify).\nThis is a hexadecimal value.",
