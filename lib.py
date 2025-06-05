@@ -1,11 +1,58 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+from json import load, dump
 from subprocess import Popen, PIPE, STDOUT, STARTUPINFO, STARTF_USESHOWWINDOW
 from wmi import WMI
-from pathlib import Path
 from time import sleep
-from lib.size import Size
+
+class Config:
+	'''Handle configuration file in JSON format'''
+
+	def __init__(self, path):
+		'''Read config file'''	
+		self.path = path
+		self._keys = list()
+		with self.path.open(encoding='utf-8') as fp:
+			for key, value in load(fp).items():
+				self.__dict__[key] = value
+				self._keys.append(key)
+
+	def exists(self, key):
+		'''Check if key exists'''
+		return key in self._keys
+
+	def save(self, path=None):
+		'''Save config file'''
+		if path:
+			self.path = path
+		with self.path.open('w', encoding='utf-8') as fp:
+			dump({key: self.__dict__[key] for key in self._keys}, fp)
+
+class Size(int):
+	'''Human readable size'''
+
+	def __repr__(self):
+		'''Genereate readable size'''
+		def _round(*base):	# intern function to calculate human readable
+			for prefix, b in base:
+				rnd = round(self/b, 2)
+				if rnd >= 1:
+					break
+			if rnd >= 10:
+				rnd = round(rnd, 1)
+			if rnd >= 100:
+				rnd = round(rnd)
+			return f'{rnd} {prefix}', rnd
+		if self < 0:
+			raise ValueError('Size must be positive')
+		iec, rnd_iec = _round(('PiB', 2**50), ('TiB', 2**40), ('GiB', 2**30), ('MiB', 2**20), ('kiB', 2**10))
+		si, rnd_si = _round(('PB', 10**15), ('TB', 10**12), ('GB', 10**9), ('MB', 10**6), ('kB', 10**3))
+		return (f'{iec} / {si} / ' if rnd_iec or rnd_si else '') + f'{int(self)} ' + ('byte' if self == 1 else 'bytes')
+
+	def __add__(self, other):
+		'''Plus'''
+		return Size(int.__add__(self, other))
 
 class WinPopen(Popen):
 	'''Popen with startupinfo'''
@@ -28,15 +75,27 @@ class WinPopen(Popen):
 class Drives:
 	'''Use WMI to get infos about drives'''
 
-	DISKPART_TIMEOUT = 30
-	DISKPART_RETRIES = 10
-	DISKPART_DELAY = 10
+	DELAY = 1
+	RETRIES = 10
 	NTFS_LABEL_CHARS = r'abcdefghijklmnopqrstuvwxyz!§$%&()@-_#=[]{}€'
 	FAT_LABEL_CHARS = r'abcdefghijklmnopqrstuvwxyz!§$%&()@-_#'
 
 	def __init__(self):
 		'''Connect to API'''			
 		self._conn = WMI()
+
+	def _retrie(self, method, *args):
+		'''Retrieve data from WMI'''
+		for _ in range(self.RETRIES):
+			try:
+				return method(*args)
+			except:
+				sleep(self.DELAY)
+		raise ChildProcessError('WMI timeout')
+
+	def logical(self):
+		'''Get drive letters'''
+		return {log_disk.DeviceID for log_disk in self._conn.Win32_LogicalDisk()}
 
 	def get_logical(self):
 		'''Get logical disks'''
@@ -96,16 +155,9 @@ class Drives:
 
 	def get_parent_of(self, device_id):
 		'''Get parent of given device'''
-		device_id = str(device_id).upper()
 		if device_id.startswith('\\\\.\\PHYSICALDRIVE'):
 			return device_id
-		parents = self.get_parents()
-		#if device_id.startswith('\\\\.\\PHYSICALDRIVE'):
-		#	return device_id# if device_id in parents.values() else None
-		try:
-			return parents[device_id]
-		except KeyError:
-			return
+		return self.get_parents()[device_id]
 
 	def get_children_of(self, device_id):
 		'''Return logical drives / partitions of given physical drive'''
@@ -113,22 +165,25 @@ class Drives:
 			for rel in self._conn.Win32_LogicalDiskToPartition()
 		}
 		return {part2logical[rel.Dependent.DeviceID] for rel in self._conn.Win32_DiskDriveToDiskPartition()
-			if rel.Antecedent.DeviceID == device_id
+			if rel.Antecedent.DeviceID == device_id and rel.Dependent.DeviceID in part2logical
 		}
 
 	def dump(self):
 		'''Return list of all drives'''
 		parents = self.get_parents()
 		log_disks = self.get_logical()
-		drives = list()
+		drives = dict()
 		for device_id, drive_dict in self.get_physical().items():
 			drive = {'DeviceID': device_id} | drive_dict
 			drive['Partitions'] = list()
 			for log_id, disk_id in parents.items():
 				if disk_id == device_id:
 					drive['Partitions'].append({'DeviceID': log_id} | log_disks[log_id])
-			drives.append(drive)
-		return drives
+			try:
+				drives[int(device_id.lstrip('\\\\.\\PHYSICALDRIVE'))] = drive
+			except ValueError:
+				pass
+		return [drives[i] for i in sorted(drives.keys())]
 
 	def get_system_ids(self):
 		'''Get ids if system drives'''
@@ -138,13 +193,6 @@ class Drives:
 				ids.add(os_drive.SystemDrive)
 				ids.add(self.get_parent_of(os_drive.SystemDrive))
 		return ids
-
-	def get_free_drive_letter(self):
-		'''Get 1st free drive letter'''
-		assigned = [drive_id.rstrip(':') for drive_id in self.get_logical()]
-		for letter in 'DEFGHIJKLMNOPQRSTUVWXYZ':
-			if letter not in assigned:
-				return letter
 
 	def check_fs_label(self, label, fs):
 		'''Check if string would be a valid file system label'''
@@ -167,39 +215,12 @@ class Drives:
 				raise ValueError(f'invalid chaaracter in "{label}": {char}')
 		return label
 
-	def create_partition(self, drive_id, script_path, label='Volume', drive=None, mbr=False, fs='ntfs'):
-		'''Create partition using diskpart'''
-		drive_id = str(drive_id).upper()
-		if drive:
-			drive = drive.rstrip(':\\/')
-		else:
-			drive = self.get_free_drive_letter()
-			if not drive:
-				raise OSError('No free drive letters')
-		drive_path = Path(f'{drive}:\\')
-		if mbr:
-			table = 'mbr'
-		else:
-			table = 'gpt'
-		script = f'select disk {drive_id[17:]}\nclean\nconvert {table}\n'
+	def diskpart(self, drive_id, script_path, pt='gpt', fs='ntfs', label='Volume', letter=None):
+		'''Create partition table and partition using diskpart'''
+		script = f'select disk {drive_id.lstrip("\\\\.\\PHYSICALDRIVE")}\nclean\nconvert {pt}\n'
 		if fs:
-			script += f'create partition primary\nformat quick fs={fs} label={label}\nassign letter={drive}\n'
+			script += f'create partition primary\nformat quick fs={fs} label={label}\n'
+			if letter:
+				script += f'assign letter={letter}\n'
 		script_path.write_text(script)
-		proc = WinPopen([f'diskpart', '/s', f'{script_path}'])
-		for line in proc.stdout:
-			print(line.rstrip())
-		return
-
-		try:
-			proc.wait(timeout=self.DISKPART_TIMEOUT)
-		except TimeoutExpired:
-			pass
-		try:
-			scrip_path.unlink()
-		except:
-			pass
-		for cnt in range(self.DISKPART_RETRIES):
-			print(cnt)
-			if drive_path.exists():
-				return drive_path
-			sleep(self.DISKPART_DELAY)
+		return WinPopen([f'diskpart', '/s', f'{script_path}'])

@@ -1,10 +1,10 @@
 {
     "pad_factor": 1,
-    "x_factor": 64,
+    "x_factor": 80,
     "y_factor": 48,
     "tree_id": 16,
     "tree_info": 32,
-    "tree_size": 16,
+    "tree_size": 24,
     "box_width": 8,
     "green_fg": "black",
     "green_bg": "pale green",

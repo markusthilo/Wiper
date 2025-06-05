@@ -43,12 +43,16 @@
     "label_error": "Invalid volume label",
     "warning": "Warning",
     "wipe_warning": "If you continue with OK, all data of\n\n#\n\nwill be erased.\n\nAre you shure? Select CANCEL to abort.",
-
-    "running_warning": "Copy process is running!\nDo you want to abort the copy process and exit the application?",
-
-    "log_head": "#\n\nThis software erases data of entire physical drives by overwriting data with option to treat SSDs gently\nAuthor: Markus Thilo\nLicense: GPL-3\nProject page: https://github.com/markusthilo/Wiper\n",
+    "start_error": "Unable to start wiping process!\n\nCould not write configuration to #",
+    "running_warning": "Process is running!\nDo you want to abort and exit the application?",
+    "aborted_on_error": "Wiping Process aborted on error",
+    "log_head": "Running #\n\nThis software erases data of entire physical drives by overwriting data with option to treat SSDs gently\nAuthor: Markus Thilo\nLicense: GPL-3\nProject page: https://github.com/markusthilo/Wiper\n",
     "executing": "Executing: #",
-    
-    "problems": "Problems occurred.",
+    "zd_error": "Wiping tool zd-win.exe reported a problem:\n#",
+    "no_drive_letter_available": "No drive letter available",
+    "running_diskpart": "Running diskpart",
+    "drive_ready": "Drive # is ready",
+    "warning_log": "Unable to write log file to #",
+    "warning_assign": "Unable to assign new partition to #",
     "all_done": "All done"
 }

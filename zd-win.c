@@ -5,7 +5,7 @@
 /* License: GPL-3 */
 
 /* Version */
-const char *VERSION = "1.0.1_2025-06-04";
+const char *VERSION = "1.0.1_2025-06-05";
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -473,11 +473,8 @@ int main(int argc, char **argv) {
 	print_time(start_time);
 	close_target(&target);
 	if ( badblocks.cnt > 0 ) {
-		printf("Warning: all done but found bad block(s)\n");
+		printf("Warning: all done but found %d bad block(s) in %s\n", badblocks.cnt, target.path);
 		print_bad_blocks(&badblocks);
-		fprintf(stderr, "Error: %d bad blocks in %s\n", badblocks.cnt, target.path);
-		exit(1);
-	}
-	printf("Verification was succesful, all done\n\n");
+	} else printf("Verification was succesful, all done\n\n");
 	exit(0);
 }
