@@ -480,10 +480,10 @@ class Gui(Tk):
 
 	def finished(self, returncode):
 		'''Run this when worker has finished copy process'''
-		self._reset()
 		if returncode == 'killed':
+			self._reset()
 			return
-		elif isinstance(returncode, Exception):
+		if isinstance(returncode, Exception):
 			self._info_text.configure(foreground=self._defs.red_fg, background=self._defs.red_bg)
 			self._warning_state = 'enable'
 			showerror(title=self._labels.error, message=f'{self._labels.aborted_on_error}\n\n{type(returncode)}:\n{returncode}')
@@ -503,7 +503,9 @@ class Gui(Tk):
 				foreground = self._defs.symbol_fg,
 				background = self._defs.symbol_bg
 			).pack(side='left', padx=self._pad, pady=self._pad)
-			Label(frame, text=self._labels.shutdown_question).pack(side='right', padx=self._pad, pady=self._pad)
+			Label(frame, text=self._labels.shutdown_question, anchor='s').pack(
+				side='right', fill='both', padx=self._pad, pady=self._pad
+			)
 			frame = Frame(self._shutdown_window, padding=self._pad)
 			frame.pack(fill='both', expand=True)
 			self._delay_progressbar = Progressbar(frame, mode='determinate', maximum=self._defs.shutdown_delay)
@@ -516,6 +518,7 @@ class Gui(Tk):
 			self._shutdown_window.geometry(f'+{pos_x}+{pos_y}')
 			self._shutdown_cnt = 0
 			self._delay_shutdown()
+		self._reset()
 
 if __name__ == '__main__':  # start here when run as application
 	Gui().mainloop()

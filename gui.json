@@ -13,5 +13,5 @@
     "symbol_factor": 4,
     "symbol_fg": "red",
     "symbol_bg": "white",
-    "shutdown_delay": 10
+    "shutdown_delay": 60
 }
