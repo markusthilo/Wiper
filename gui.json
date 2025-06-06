@@ -9,5 +9,9 @@
     "green_fg": "black",
     "green_bg": "pale green",
     "red_fg": "black",
-    "red_bg": "coral"
+    "red_bg": "coral",
+    "symbol_factor": 4,
+    "symbol_fg": "red",
+    "symbol_bg": "white",
+    "shutdown_delay": 10
 }

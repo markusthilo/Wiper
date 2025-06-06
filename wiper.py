@@ -3,7 +3,7 @@
 
 __application__ = 'Wiper'
 __description__ = 'Windows GUI tool to securely wipe drives with option to treat SSDs gently.'
-__version__ = '0.0.1_2025-06-05'
+__version__ = '0.1.0_2025-06-06'
 __status__ = 'Testing'
 __license__ = 'GPL-3'
 __author__ = 'Markus Thilo'
@@ -15,16 +15,15 @@ from pythoncom import CoInitialize, CoUninitialize
 from pathlib import Path
 from ctypes import windll
 from subprocess import run
-from tkinter import Tk, PhotoImage, StringVar, BooleanVar
+from tkinter import Tk, PhotoImage, StringVar, BooleanVar, Checkbutton, Toplevel
 from tkinter.font import nametofont
 from tkinter.ttk import Frame, Label, Entry, Button, Combobox, Treeview
-from tkinter.ttk import Scrollbar, Spinbox
+from tkinter.ttk import Scrollbar, Spinbox, Progressbar
 from tkinter.scrolledtext import ScrolledText
 from tkinter.messagebox import showerror, askokcancel, askyesno
 from idlelib.tooltip import Hovertip
 from worker import Wipe
-from lib import Config, Drives
-from tkinter import Checkbutton
+from classes_wiper import Config, Drives
 
 __parent_path__ = Path(__file__).parent if Path(__executable__).stem == 'python' else Path(__executable__).parent
 
@@ -42,17 +41,21 @@ class WorkThread(Thread):
 		'''Kill thread'''
 		self._kill_event.set()
 
+	def kill_is_set(self):
+		'''Return True if kill event is set'''
+		return self._kill_event.is_set()
+
 	def run(self):
 		'''Run thread'''
 		CoInitialize()
 		try:
-			warnings = self._worker.run()
+			returncode = self._worker.run()
 		except Exception as ex:
-			self._finish(ex)
-		else:
-			self._finish(warnings)
-		finally:
-			CoUninitialize()
+			returncode = ex
+		if self.kill_is_set():
+			returncode = 'killed'
+		CoUninitialize()
+		self._finish(returncode)
 
 class Gui(Tk):
 	'''GUI look and feel'''
@@ -69,12 +72,14 @@ class Gui(Tk):
 		self._drives = Drives()
 		self._target_id = None
 		self._forbidden_ids = self._drives.get_system_ids()	# drives not to selected
-		this_drive_id = f'{Path(__file__).drive}'
-		self._forbidden_ids.add(this_drive_id)
-		self._forbidden_ids.add(self._drives.get_parent_of(this_drive_id))
-		if home_drive_id := f'{Path().home().drive}':
-			self._forbidden_ids.add(home_drive_id)
-			self._forbidden_ids.add(self._drives.get_parent_of(home_drive_id))
+		drive_id = f'{Path(__file__).drive}'	# prevent wiping drive of this application
+		self._forbidden_ids.add(drive_id)
+		if parent_id := self._drives.get_parent_of(drive_id):
+			self._forbidden_ids.add(parent_id)
+		if drive_id := f'{Path().home().drive}':
+			self._forbidden_ids.add(drive_id)
+			if parent_id := self._drives.get_parent_of(drive_id):
+				self._forbidden_ids.add(drive_id)
 		self._drive_dump = None	# to check for changes
 		self.title(f'{__application__} v{__version__}')	### define the gui ###
 		self.rowconfigure(0, weight=1)
@@ -84,18 +89,16 @@ class Gui(Tk):
 		self.columnconfigure(2, weight=1)
 		self.iconphoto(True, PhotoImage(file=__parent_path__ / 'appicon.png'))
 		self.protocol('WM_DELETE_WINDOW', self._quit_app)
-		font = nametofont('TkTextFont').actual()
-		font_family = font['family']
-		self._font_size = font['size']
-		min_size_x = self._font_size * self._defs.x_factor
-		min_size_y = self._font_size * self._defs.y_factor
+		self._font = nametofont('TkTextFont').actual()
+		min_size_x = self._font['size'] * self._defs.x_factor
+		min_size_y = self._font['size'] * self._defs.y_factor
 		self.minsize(min_size_x , min_size_y)
 		self.geometry(f'{min_size_x}x{min_size_y}')
 		self.resizable(True, True)
-		self._pad = int(self._font_size * self._defs.pad_factor)
-		self._id_width = self._font_size * self._defs.tree_id
-		self._info_width = self._font_size * self._defs.tree_info
-		self._size_width = self._font_size * self._defs.tree_size
+		self._pad = int(self._font['size'] * self._defs.pad_factor)
+		self._id_width = self._font['size'] * self._defs.tree_id
+		self._info_width = self._font['size'] * self._defs.tree_info
+		self._size_width = self._font['size'] * self._defs.tree_size
 		self._drive_frame = Frame(self)	### drive tree ###
 		self._drive_frame.grid(row=0, column=0, columnspan=3, sticky='nsew', padx=self._pad, pady=self._pad)
 		self._start_text = StringVar(value=self._labels.choose_target)	
@@ -120,7 +123,7 @@ class Gui(Tk):
 		self._task_selector = Combobox(self,
 			textvariable = self._task,
 			values = tuple(self._labels.tasks.values()),
-			state = 'readonly',
+			state = 'readonly'
 		)
 		self._task_selector.grid(row=1, column=0, sticky='nwe', padx=self._pad)
 		Hovertip(self._task_selector, self._labels.task_tip)
@@ -157,7 +160,7 @@ class Gui(Tk):
 		self._create_selector = Combobox(self,
 			textvariable = self._create,
 			values = tuple(self._labels.create.values()),
-			state = 'readonly',
+			state = 'readonly'
 		)
 		self._create_selector.grid(row=3, column=0, sticky='nwe', padx=self._pad, pady=self._pad)
 		Hovertip(self._create_selector, self._labels.create_tip)
@@ -166,7 +169,7 @@ class Gui(Tk):
 		self._fs_selector = Combobox(self,
 			textvariable = self._fs,
 			values = tuple(self._labels.fs.values()),
-			state = 'readonly',
+			state = 'readonly'
 		)
 		self._fs_selector.grid(row=3, column=1, sticky='nwe', padx=self._pad, pady=self._pad)
 		Hovertip(self._fs_selector, self._labels.fs_tip)
@@ -180,7 +183,7 @@ class Gui(Tk):
 		self._start_button = Button(self, textvariable=self._start_text, command=self._start, state='disabled')	### start ###
 		self._start_button.grid(row=3, rowspan=2, column=2, sticky='nswe', padx=self._pad, pady=(self._pad, 0))
 		Hovertip(self._start_button, self._labels.wipe_tip)
-		self._info_text = ScrolledText(self, font=(font_family, self._font_size), padx=self._pad, pady=self._pad)
+		self._info_text = ScrolledText(self, font=(self._font['family'], self._font['size']), padx=self._pad, pady=self._pad)
 		self._info_text.grid(row=5, column=0, columnspan=3, sticky='nsew',	### info text ###
 			ipadx=self._pad, ipady=self._pad, padx=self._pad, pady=self._pad)
 		self._info_text.bind('<Key>', lambda dummy: 'break')
@@ -257,15 +260,17 @@ class Gui(Tk):
 			if item in self._forbidden_ids:
 				self._start_text.set(self._labels.choose_target)
 				self._start_button.configure(state='disabled')
+				self._target_id = None
 				return
 			self._target_id = self._drives.get_parent_of(item)
-			self._start_text.set(f'{self._labels.wipe} {self._target_id}')
+			self._get_task()
 			self._start_button.configure(state='normal')
 			self._info_text.configure(foreground=self._info_fg, background=self._info_bg)
 			self._warning_state = 'stop'
 
 	def _refresh_loop(self):
 		'''Show flashing warning'''
+		self._get_task()
 		if self._warning_state == 'enable':
 			self._info_label.configure(text=self._labels.warning)
 			self._warning_state = '1'
@@ -298,7 +303,14 @@ class Gui(Tk):
 			task = self._rev_tasks[self._task.get()]
 		except Exception as ex:
 			return ex
-		self._config.task = task
+		else:
+			self._config.task = task
+		finally:
+			if self._target_id:
+				if self._config.task == 'verify':
+					self._start_text.set(self._labels.verify.replace('#', self._target_id))
+				else:
+					self._start_text.set(self._labels.wipe.replace('#', self._target_id))
 
 	def _get_value(self):
 		'''Get value'''
@@ -402,6 +414,7 @@ class Gui(Tk):
 			showerror(title=self._labels.error, message=self._labels.start_replace('#', self.config.path))
 			return
 		self._start_button.configure(state='disabled')
+		self._quit_text.set(self._labels.abort)
 		self._clear_info()
 		self._work_thread = WorkThread(self._target_id, self.echo, self.finished)
 		self._work_thread.start()
@@ -413,15 +426,24 @@ class Gui(Tk):
 			if askyesno(title=self._labels.warning, message=self._labels.shutdown_warning):
 				self._shutdown.set(True)
 
+	def _reset(self):
+		'''Reset buttons'''
+		self._start_text.set(self._labels.choose_target)
+		self._start_button.configure(state='disabled')
+		self._shutdown.set(False)
+		self._quit_text.set(self._labels.quit)
+		self._target_id = None
+		self._work_thread = None
+
 	def _quit_app(self):
 		'''Quit app, ask when wipe processs is running'''
-		if self._work_thread:
-			if not askokcancel(title=self._labels.warning, message=self._labels.running_warning):
+		if self._work_thread:	
+			if self._work_thread.kill_is_set():
+				self._reset()
+			else:
+				if askokcancel(title=self._labels.warning, message=self._labels.abort_warning):
+					self._work_thread.kill() # kill running work thread
 				return
-			try:
-				self._work_thread.kill()
-			except:
-				pass
 		self._get_value()
 		self._get_blocksize()
 		self._get_maxbadblocks()
@@ -434,6 +456,15 @@ class Gui(Tk):
 		except:
 			pass
 		self.destroy()
+
+	def _delay_shutdown(self):
+		'''Delay shutdown and update progress bar'''
+		if self._shutdown_cnt < self._defs.shutdown_delay:
+			self._shutdown_cnt += 1
+			self._delay_progressbar.step(1)
+			self._shutdown_window.after(1000, self._delay_shutdown)
+		else:
+			run(['shutdown', '/s'])
 
 	def echo(self, *args, end=None):
 		'''Write message to info field (ScrolledText)'''
@@ -449,22 +480,42 @@ class Gui(Tk):
 
 	def finished(self, returncode):
 		'''Run this when worker has finished copy process'''
-		self._work_thread = None
-		if isinstance(returncode, SystemExit):
-			print('DEBUG: SystemExit:', returncode)
-			#self._quit_app()
+		self._reset()
+		if returncode == 'killed':
+			return
 		elif isinstance(returncode, Exception):
 			self._info_text.configure(foreground=self._defs.red_fg, background=self._defs.red_bg)
 			self._warning_state = 'enable'
 			showerror(title=self._labels.error, message=f'{self._labels.aborted_on_error}\n\n{type(returncode)}:\n{returncode}')
-		elif not returncode:
+		elif returncode:
 			self._info_text.configure(foreground=self._defs.green_fg, background=self._defs.green_bg)
-		if self._shutdown.get():
-
-			print('DEBUG shutdown')
-			#run(['shutdown', '/s'])
-		self._start_text.set(self._labels.choose_target)
-		self._shutdown.set(False)
+		if self._shutdown.get():	### Shutdown dialog ###
+			self._shutdown_window = Toplevel(self)
+			self._shutdown_window.title(self._labels.warning)
+			self._shutdown_window.transient(self)
+			self._shutdown_window.resizable(False, False)
+			self._shutdown_window.grab_set()
+			frame = Frame(self._shutdown_window, padding=self._pad)
+			frame.pack(fill='both', expand=True)
+			Label(frame,
+				text = '\u26A0',
+				font = (self._font['family'], self._font['size'] * self._defs.symbol_factor),
+				foreground = self._defs.symbol_fg,
+				background = self._defs.symbol_bg
+			).pack(side='left', padx=self._pad, pady=self._pad)
+			Label(frame, text=self._labels.shutdown_question).pack(side='right', padx=self._pad, pady=self._pad)
+			frame = Frame(self._shutdown_window, padding=self._pad)
+			frame.pack(fill='both', expand=True)
+			self._delay_progressbar = Progressbar(frame, mode='determinate', maximum=self._defs.shutdown_delay)
+			self._delay_progressbar.pack(side='top', fill='x', padx=self._pad, pady=self._pad)
+			cancel_button = Button(frame, text=self._labels.cancel_shutdown, command=self._shutdown_window.destroy)
+			cancel_button.pack(side='bottom', fill='both', padx=self._pad, pady=self._pad)
+			self.update_idletasks()
+			pos_x = self.winfo_rootx() + (self.winfo_width() // 2)
+			pos_y = self.winfo_rooty() + (self.winfo_height() // 2)
+			self._shutdown_window.geometry(f'+{pos_x}+{pos_y}')
+			self._shutdown_cnt = 0
+			self._delay_shutdown()
 
 if __name__ == '__main__':  # start here when run as application
 	Gui().mainloop()

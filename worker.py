@@ -4,9 +4,9 @@
 from sys import executable as __executable__
 import logging
 from pathlib import Path
-from time import time, strftime, sleep
+from time import time, strftime
 from os import getpid
-from lib import Config, Drives, WinPopen
+from classes_wiper import Config, Drives, WinPopen
 
 __parent_path__ = Path(__file__).parent if Path(__executable__).stem == 'python' else Path(__executable__).parent
 
@@ -29,9 +29,9 @@ class Wipe:
 				self._log_dir_path.unlink()
 				self._log_dir_path.mkdir()
 			else:
-				now = time()	# purge older 7 days
+				now = time()	# purge logs older 7 days
 				for path in self._log_dir_path.iterdir():
-					if now - path.stat().st_mtime > 60:	#604800:
+					if now - path.stat().st_mtime > 604800:
 						try:
 							path.unlink()
 						except:
@@ -80,7 +80,10 @@ class Wipe:
 				self._info(msg)
 			if self._kill and self._kill.is_set():
 				self.zd_proc.kill()
-				raise SystemExit('Kill signal')
+		if 	self._kill and self._kill.is_set():
+			self._info(self._labels.aborted_by_user)
+			logging.shutdown()
+			return 'killed'
 		if stderr := zd_proc.stderr.read().strip():
 			self._error(self._labels.zd_error.replace('#', stderr))
 		if self._config.task != 'verify' or self._config.create != 'none':
@@ -111,7 +114,9 @@ class Wipe:
 					if verified_id_list:
 						for cnt, volume_id in enumerate(id_list):
 							if self._kill and self._kill.is_set():
-								raise SystemExit('Kill signal')
+								self._info(self._labels.aborted_by_user)
+								logging.shutdown()
+								return('killed')
 							if cnt == 0:
 								self._info(self._labels.running_diskpart)
 							else:
@@ -151,7 +156,7 @@ class Wipe:
 			self._warnings = True
 		self._echo(self._labels.all_done)
 		logging.shutdown()
-		return self._warnings
+		return not self._warnings
 
 	def _info(self, msg):
 		'''Log info and echo message'''
@@ -173,10 +178,7 @@ class Wipe:
 		'''Log and raise exception'''
 		msg = self._decode_exception(arg)
 		logging.error(msg)
-		try:
-			logging.shutdown()
-		except:
-			pass
+		logging.shutdown()
 		if isinstance(arg, Exception):
 			raise arg
 		raise RuntimeError(msg)

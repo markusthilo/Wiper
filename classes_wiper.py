@@ -148,7 +148,10 @@ class Drives:
 		'''Get parent of given device'''
 		if device_id.startswith('\\\\.\\PHYSICALDRIVE'):
 			return device_id
-		return self.get_parents()[device_id]
+		try:
+			return self.get_parents()[device_id]
+		except KeyError:
+			return
 
 	def get_children_of(self, device_id):
 		'''Return logical drives / partitions of given physical drive'''
