@@ -84,18 +84,9 @@ class Drives:
 		'''Connect to API'''			
 		self._conn = WMI()
 
-	def _retrie(self, method, *args):
-		'''Retrieve data from WMI'''
-		for _ in range(self.RETRIES):
-			try:
-				return method(*args)
-			except:
-				sleep(self.DELAY)
-		raise ChildProcessError('WMI timeout')
-
-	def logical(self):
-		'''Get drive letters'''
-		return {log_disk.DeviceID for log_disk in self._conn.Win32_LogicalDisk()}
+	def get_occupied_volumes(self):
+		'''Get IDs of volumes that are in use'''
+		return {volume.Name.rstrip('\\') for volume in self._conn.Win32_Volume() if volume.Name != volume.DeviceID}
 
 	def get_logical(self):
 		'''Get logical disks'''
@@ -215,7 +206,7 @@ class Drives:
 				raise ValueError(f'invalid chaaracter in "{label}": {char}')
 		return label
 
-	def diskpart(self, drive_id, script_path, pt='gpt', fs='ntfs', label='Volume', letter=None):
+	def diskpart(self, drive_id, script_path, pt='gpt', fs='ntfs', label='Volume', letter=None, echo=None):
 		'''Create partition table and partition using diskpart'''
 		script = f'select disk {drive_id.lstrip("\\\\.\\PHYSICALDRIVE")}\nclean\nconvert {pt}\n'
 		if fs:
@@ -223,4 +214,12 @@ class Drives:
 			if letter:
 				script += f'assign letter={letter}\n'
 		script_path.write_text(script)
-		return WinPopen([f'diskpart', '/s', f'{script_path}'])
+		proc = WinPopen([f'diskpart', '/s', f'{script_path}'])
+		for line in proc.stdout:
+			if echo:
+				echo(line.strip())
+		try:
+			script_path.unlink()
+		except:
+			pass
+		return proc

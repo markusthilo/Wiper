@@ -13,15 +13,18 @@ from sys import executable as __executable__
 from threading import Thread, Event
 from pythoncom import CoInitialize, CoUninitialize
 from pathlib import Path
-from tkinter import Tk, PhotoImage, StringVar
+from ctypes import windll
+from subprocess import run
+from tkinter import Tk, PhotoImage, StringVar, BooleanVar
 from tkinter.font import nametofont
 from tkinter.ttk import Frame, Label, Entry, Button, Combobox, Treeview
 from tkinter.ttk import Scrollbar, Spinbox
 from tkinter.scrolledtext import ScrolledText
-from tkinter.messagebox import showerror, askokcancel
+from tkinter.messagebox import showerror, askokcancel, askyesno
 from idlelib.tooltip import Hovertip
 from worker import Wipe
 from lib import Config, Drives
+from tkinter import Checkbutton
 
 __parent_path__ = Path(__file__).parent if Path(__executable__).stem == 'python' else Path(__executable__).parent
 
@@ -42,10 +45,6 @@ class WorkThread(Thread):
 	def run(self):
 		'''Run thread'''
 		CoInitialize()
-		self._finish(self._worker.run())
-		CoUninitialize()
-		return
-
 		try:
 			warnings = self._worker.run()
 		except Exception as ex:
@@ -61,11 +60,11 @@ class Gui(Tk):
 	def __init__(self):
 		'''Open application window'''
 		super().__init__()
+		self._defs = Config(__parent_path__ / 'gui.json')
+		self._labels = Config(__parent_path__ / 'labels.json')
 		self._config = Config(__parent_path__ / 'config.json')
 		self._config.application = __application__
 		self._config.version = __version__
-		self._defs = Config(__parent_path__ / 'gui.json')
-		self._labels = Config(__parent_path__ / 'labels.json')
 		self._work_thread = None
 		self._drives = Drives()
 		self._target_id = None
@@ -193,9 +192,21 @@ class Gui(Tk):
 		self._info_label.grid(row=6, column=0, sticky='nsew', padx=self._pad, pady=(0, self._pad))
 		self._label_fg = self._info_label.cget('foreground')
 		self._label_bg = self._info_label.cget('background')
-		self._quit_button = Button(self, text=self._labels.quit, command=self._quit_app)	### quit ###
+		self._shutdown = BooleanVar(value=False)	### shutdown after finish
+		frame = Frame(self)
+		frame.grid(row=6, column=1, sticky='nwe', pady=(0, self._pad))
+		Label(frame, text=f'{self._labels.shutdown}:').pack(side='left', padx=self._pad)
+		self._shutdown_button = Checkbutton(frame, variable=self._shutdown, command=self._toggle_shutdown)
+		self._shutdown_button.pack(side='right', padx=self._pad)
+		Hovertip(frame, self._labels.shutdown_tip)
+		self._quit_text = StringVar(value=self._labels.quit)
+		self._quit_button = Button(self, textvariable=self._quit_text, command=self._quit_app)	### quit ###
 		self._quit_button.grid(row=6, column=2, sticky='e', padx=self._pad, pady=(0, self._pad))
 		Hovertip(self._quit_button, self._labels.quit_tip)
+		if windll.shell32.IsUserAnAdmin() == 0:
+			msg = self._labels.admin_required.replace('#', __application__)
+			showerror(self._labels.error, msg)
+			raise SystemExit(msg)
 		self._refresh_counter = 0	# to check devices every 2 seconds
 		self._warning_state = 'disabled'	# no warning info
 		self._refresh_loop()	# handle warning and observe drives
@@ -255,23 +266,22 @@ class Gui(Tk):
 
 	def _refresh_loop(self):
 		'''Show flashing warning'''
-		if not self._work_thread:
-			if self._warning_state == 'enable':
-				self._info_label.configure(text=self._labels.warning)
-				self._warning_state = '1'
-			if self._warning_state == '1':
-				self._info_label.configure(foreground=self._defs.red_fg, background=self._defs.red_bg)
-				self._warning_state = '2'
-			elif self._warning_state == '2':
-				self._info_label.configure(foreground=self._label_fg, background=self._label_bg)
-				self._warning_state = '1'
-			elif self._warning_state != 'disabled':
-				self._info_label.configure(text= '', foreground=self._label_fg, background=self._label_bg)
-				self._warning_state = 'disabled'
-			self._refresh_counter += 1
-			if self._refresh_counter > 3:
-				self._refresh_counter = 0
-				self._gen_drive_tree()
+		if self._warning_state == 'enable':
+			self._info_label.configure(text=self._labels.warning)
+			self._warning_state = '1'
+		if self._warning_state == '1':
+			self._info_label.configure(foreground=self._defs.red_fg, background=self._defs.red_bg)
+			self._warning_state = '2'
+		elif self._warning_state == '2':
+			self._info_label.configure(foreground=self._label_fg, background=self._label_bg)
+			self._warning_state = '1'
+		elif self._warning_state != 'disabled':
+			self._info_label.configure(text= '', foreground=self._label_fg, background=self._label_bg)
+			self._warning_state = 'disabled'
+		self._refresh_counter += 1
+		if self._refresh_counter > 3:
+			self._refresh_counter = 0
+			self._gen_drive_tree()
 		self.after(500, self._refresh_loop)
 
 	def _clear_info(self):
@@ -396,6 +406,13 @@ class Gui(Tk):
 		self._work_thread = WorkThread(self._target_id, self.echo, self.finished)
 		self._work_thread.start()
 
+	def _toggle_shutdown(self):
+		'''Toggle select switch to shutdown after finish'''
+		if self._shutdown.get():
+			self._shutdown.set(False)
+			if askyesno(title=self._labels.warning, message=self._labels.shutdown_warning):
+				self._shutdown.set(True)
+
 	def _quit_app(self):
 		'''Quit app, ask when wipe processs is running'''
 		if self._work_thread:
@@ -434,14 +451,20 @@ class Gui(Tk):
 		'''Run this when worker has finished copy process'''
 		self._work_thread = None
 		if isinstance(returncode, SystemExit):
-			self._quit_app()
+			print('DEBUG: SystemExit:', returncode)
+			#self._quit_app()
 		elif isinstance(returncode, Exception):
 			self._info_text.configure(foreground=self._defs.red_fg, background=self._defs.red_bg)
 			self._warning_state = 'enable'
 			showerror(title=self._labels.error, message=f'{self._labels.aborted_on_error}\n\n{type(returncode)}:\n{returncode}')
 		elif not returncode:
 			self._info_text.configure(foreground=self._defs.green_fg, background=self._defs.green_bg)
+		if self._shutdown.get():
+
+			print('DEBUG shutdown')
+			#run(['shutdown', '/s'])
 		self._start_text.set(self._labels.choose_target)
+		self._shutdown.set(False)
 
 if __name__ == '__main__':  # start here when run as application
 	Gui().mainloop()

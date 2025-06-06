@@ -1,12 +1,1 @@
-{
-    "application": "Wiper",
-    "version": "0.0.1_2025-06-05",
-    "task": "selective",
-    "value": "00",
-    "blocksize": 4096,
-    "maxbadblocks": 200,
-    "maxretries": 200,
-    "create": "mbr",
-    "fs": "fat32",
-    "label": "Volume"
-}
+{"application": "Wiper", "version": "0.0.1_2025-06-05", "task": "selective", "value": "00", "blocksize": 4096, "maxbadblocks": 200, "maxretries": 200, "create": "mbr", "fs": "fat32", "label": "TEST"}

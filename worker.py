@@ -65,9 +65,8 @@ class Wipe:
 	def run(self):
 		'''Execute copy process (or simulation)'''
 		self._drives = Drives()
-		self._logical_ids = self._drives.get_children_of(self._device_id)
+		self._old_part_ids = self._drives.get_children_of(self._device_id)
 		self._info(self._labels.executing.replace('#', f'{self._cmd[0].name} {" ".join(self._cmd[1:])}'))
-		'''
 		zd_proc = WinPopen(self._cmd)	### zd-win ###
 		for line in zd_proc.stdout:
 			msg = line.strip()
@@ -80,43 +79,68 @@ class Wipe:
 			else:
 				self._info(msg)
 			if self._kill and self._kill.is_set():
-				self.zd_proc.terminate()
+				self.zd_proc.kill()
 				raise SystemExit('Kill signal')
 		if stderr := zd_proc.stderr.read().strip():
 			self._error(self._labels.zd_error.replace('#', stderr))
-		'''
 		if self._config.task != 'verify' or self._config.create != 'none':
 			if self._config.create != 'none' and self._config.fs:	### diskpart ###
-				assigned_ids = self._drives.logical()
-				if free_ids := self._logical_ids - assigned_ids:
-					drive_letter = list(free_ids)[0].rstrip(':')
-				else:
-					for drive_letter in 'DEFGHIJKLMNOPQRSTUVWXYZ':
-						if f'{drive_letter}:' not in assigned_ids:
-							break
-				if not drive_letter:
-					self._error(self.no_drive_letter_available)
-			else:
-				drive_letter = None
-			self._info(self._labels.running_diskpart)
-			dp_proc = self._drives.diskpart(self._device_id, self._script_path,
-				pt = None if self._config.create == 'none' else self._config.create,
-				fs = None if self._config.fs == 'none' else self._config.fs,
-				label = self._config.label,
-				letter = drive_letter
-			)
-			for line in dp_proc.stdout:
-				msg = line.strip()
-				if msg:
-					self._echo(msg)
-			try:
-				self._script_path.unlink()
-			except:
-				pass
-			drive_path = Path(f'{drive_letter}:\\')
-			if drive_path.exists():
-				self._info(self._labels.drive_ready.replace('#', f'{drive_path}'))
+				new_volume_id = None	# do not assign drive
+				if self._config.create == 'none' or self._config.fs == 'none':
+					self._info(self._labels.running_diskpart)
+					self._drives.diskpart(self._device_id, self._script_path,
+						pt = None if self._config.create == 'none' else self._config.create,
+						fs = None,
+						echo = self._echo
+					)
+				else:	# assign new partition to drive letter
+					id_list = sorted(list(self._old_part_ids))	# test former drive letters first
+					occupied_ids = self._drives.get_occupied_volumes()
+					for letter in 'DEFGHIJKLMNOPQRSTUVWXYZ':
+						volume_id = f'{letter}:'
+						if volume_id not in self._old_part_ids and volume_id not in occupied_ids:
+							id_list.append(volume_id)
+					verified_id_list = list()
+					for volume_id in id_list:
+						try:
+							if Path(volume_id).is_dir():
+								continue
+						except:
+							pass
+						verified_id_list.append(volume_id)
+					if verified_id_list:
+						for cnt, volume_id in enumerate(id_list):
+							if self._kill and self._kill.is_set():
+								raise SystemExit('Kill signal')
+							if cnt == 0:
+								self._info(self._labels.running_diskpart)
+							else:
+								self._info(self._labels.running_diskpart_again)
+							self._drives.diskpart(self._device_id, self._script_path,
+								pt = self._config.create,
+								fs = self._config.fs,
+								label = self._config.label,
+								letter = volume_id.rstrip(':'),
+								echo = self._echo
+							)
+							if Path(volume_id).is_dir():
+								new_volume_id = volume_id
+								break
+							if not new_volume_id:
+								self._warning(self._labels.unable_assign_drive)
+					else:
+						self._info(self._labels.running_diskpart)
+						self._drives.diskpart(self._device_id, self._script_path,
+							pt = self._config.create,
+							fs = self._config.fs,
+							label = self._config.label,
+							echo = self._echo
+						)
+						self._warning(self._labels.no_free_letter)
+			if new_volume_id:
+				self._info(self._labels.drive_ready.replace('#', f'{new_volume_id}'))
 				logging.shutdown()
+				drive_path = Path(new_volume_id)
 				try:
 					drive_path.joinpath(f'{self._time}_wiper_log.txt').write_bytes(self._log_file_path.read_bytes())
 				except:
