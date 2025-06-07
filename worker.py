@@ -45,7 +45,6 @@ class Wipe:
 		log_fh = logging.FileHandler(filename=self._log_file_path, mode='w', encoding='utf-8')
 		log_fh.setFormatter(formatter)
 		logger.addHandler(log_fh)
-		logging.info(self._labels.log_head.replace('#', f'{self._config.application} v{self._config.version}'))
 		self._cmd = [__parent_path__ / 'zd-win.exe',
 			'-f', self._config.value,
 			'-b', f'{self._config.blocksize}',
@@ -65,8 +64,13 @@ class Wipe:
 	def run(self):
 		'''Execute copy process (or simulation)'''
 		self._drives = Drives()
+		msg = self._labels.log_head.replace('#', f'{self._config.application} v{self._config.version}')
+		for attr, info in self._drives.get_drive_info(self._device_id).items():
+			if info:
+				msg += f'\n{attr}: {info}'
+		self._info(msg)
+		self._echo(self._labels.executing.replace('#', f'{self._cmd[0].name} {" ".join(self._cmd[1:])}'))
 		self._old_part_ids = self._drives.get_children_of(self._device_id)
-		self._info(self._labels.executing.replace('#', f'{self._cmd[0].name} {" ".join(self._cmd[1:])}'))
 		zd_proc = WinPopen(self._cmd)	### zd-win ###
 		for line in zd_proc.stdout:
 			msg = line.strip()
@@ -86,7 +90,7 @@ class Wipe:
 			return 'killed'
 		if stderr := zd_proc.stderr.read().strip():
 			self._error(self._labels.zd_error.replace('#', stderr))
-		if self._config.task != 'verify' or self._config.create != 'none':
+		if self._config.task != 'verify' and self._config.create != 'none':
 			if self._config.create != 'none' and self._config.fs:	### diskpart ###
 				new_volume_id = None	# do not assign drive
 				if self._config.create == 'none' or self._config.fs == 'none':
@@ -142,8 +146,10 @@ class Wipe:
 							echo = self._echo
 						)
 						self._warning(self._labels.no_free_letter)
+
 			if new_volume_id:
-				self._info(self._labels.drive_ready.replace('#', f'{new_volume_id}'))
+				self._info(self._labels.finished)
+				self._echo(self._labels.drive_ready.replace('#', f'{new_volume_id}'))
 				logging.shutdown()
 				drive_path = Path(new_volume_id)
 				try:
@@ -151,12 +157,17 @@ class Wipe:
 				except:
 					self._echo(self._labels.warning_log.replace('#', f'{drive_path}'))
 					self._warnings = True
+				return not self._warnings
 			else:
 				self._warning(self._labels.warning_assign.replace('#', f'{drive_path}'))
 			self._warnings = True
-		self._echo(self._labels.all_done)
+		if self._warnings:
+			self._warning(self._labels.warnings_occured)
+			logging.shutdown()
+			return
+		self._info(self._labels.finished)
 		logging.shutdown()
-		return not self._warnings
+		return True
 
 	def _info(self, msg):
 		'''Log info and echo message'''
@@ -178,6 +189,7 @@ class Wipe:
 		'''Log and raise exception'''
 		msg = self._decode_exception(arg)
 		logging.error(msg)
+		self._echo(msg)
 		logging.shutdown()
 		if isinstance(arg, Exception):
 			raise arg

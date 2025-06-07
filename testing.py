@@ -3,5 +3,5 @@
 
 from worker import Wipe
 
-worker = Wipe('\\\\.\\PHYSICALDRIVE3')
+worker = Wipe('\\\\.\\PHYSICALDRIVE1')
 print(worker.run())

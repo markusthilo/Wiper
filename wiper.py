@@ -3,7 +3,7 @@
 
 __application__ = 'Wiper'
 __description__ = 'Windows GUI tool to securely wipe drives with option to treat SSDs gently.'
-__version__ = '0.1.0_2025-06-06'
+__version__ = '0.1.0_2025-06-07'
 __status__ = 'Testing'
 __license__ = 'GPL-3'
 __author__ = 'Markus Thilo'
@@ -130,11 +130,13 @@ class Gui(Tk):
 		self._rev_tasks = dict(zip(self._labels.tasks.values(), self._labels.tasks))
 		frame = Frame(self)	### value ###
 		frame.grid(row=1, column=1, sticky='nwe', pady=(0, self._pad))
-		Label(frame, text=f'{self._labels.value}:').pack(side='left', padx=self._pad)
+		label = Label(frame, text=f'{self._labels.value}:')
+		label.pack(side='left', padx=self._pad)
 		self._value_box = Spinbox(frame, values=tuple(f'{b:02x}' for b in range(0x100)), width=self._defs.box_width)
 		self._value_box.pack(side='right', padx=self._pad)
 		self._value_box.set(self._config.value)
 		Hovertip(frame, self._labels.value_tip)
+		Hovertip(label, self._labels.value_tip)
 		frame = Frame(self)	### blocksize ###
 		frame.grid(row=1, column=2, sticky='nwe', pady=(0, self._pad))
 		Label(frame, text=f'{self._labels.blocksize}:').pack(side='left', padx=self._pad)
@@ -144,18 +146,22 @@ class Gui(Tk):
 		Hovertip(frame, self._labels.blocksize_tip)
 		frame = Frame(self)	### maxbadblocks ###
 		frame.grid(row=2, column=1, sticky='nwe')
-		Label(frame, text=f'{self._labels.maxbadblocks}:').pack(side='left', padx=self._pad)
+		label = Label(frame, text=f'{self._labels.maxbadblocks}:')
+		label.pack(side='left', padx=self._pad)
 		self._maxbadblocks_box = Spinbox(frame, from_=0, to=0xffff, width=self._defs.box_width)
 		self._maxbadblocks_box.pack(side='right', padx=self._pad)
 		self._maxbadblocks_box.set(self._config.maxbadblocks)
 		Hovertip(frame, self._labels.maxbadblocks_tip)
+		Hovertip(label, self._labels.maxbadblocks_tip)
 		frame = Frame(self)	### maxretries ###
 		frame.grid(row=2, column=2, sticky='nwe')
-		Label(frame, text=f'{self._labels.maxretries}:').pack(side='left', padx=self._pad)
+		label = Label(frame, text=f'{self._labels.maxretries}:')
+		label.pack(side='left', padx=self._pad)
 		self._maxretries_box = Spinbox(frame, from_=0, to=0xffff, width=self._defs.box_width)
 		self._maxretries_box.pack(side='right', padx=self._pad)
 		self._maxretries_box.set(self._config.maxretries)
 		Hovertip(frame, self._labels.maxretries_tip)
+		Hovertip(label, self._labels.maxretries_tip)
 		self._create = StringVar(value=self._labels.create[self._config.create])	### create ###
 		self._create_selector = Combobox(self,
 			textvariable = self._create,
@@ -180,6 +186,7 @@ class Gui(Tk):
 		self._label_entry = Entry(self, textvariable=self._label)
 		self._label_entry.grid(row=4, column=1, sticky='nwe', padx=self._pad)
 		Hovertip(label, self._labels.label_tip)
+		Hovertip(self._label_entry, self._labels.label_tip)
 		self._start_button = Button(self, textvariable=self._start_text, command=self._start, state='disabled')	### start ###
 		self._start_button.grid(row=3, rowspan=2, column=2, sticky='nswe', padx=self._pad, pady=(self._pad, 0))
 		Hovertip(self._start_button, self._labels.wipe_tip)
@@ -198,10 +205,12 @@ class Gui(Tk):
 		self._shutdown = BooleanVar(value=False)	### shutdown after finish
 		frame = Frame(self)
 		frame.grid(row=6, column=1, sticky='nwe', pady=(0, self._pad))
-		Label(frame, text=f'{self._labels.shutdown}:').pack(side='left', padx=self._pad)
+		label = Label(frame, text=f'{self._labels.shutdown}:')
+		label.pack(side='left', padx=self._pad)
 		self._shutdown_button = Checkbutton(frame, variable=self._shutdown, command=self._toggle_shutdown)
 		self._shutdown_button.pack(side='right', padx=self._pad)
 		Hovertip(frame, self._labels.shutdown_tip)
+		Hovertip(label, self._labels.shutdown_tip)
 		self._quit_text = StringVar(value=self._labels.quit)
 		self._quit_button = Button(self, textvariable=self._quit_text, command=self._quit_app)	### quit ###
 		self._quit_button.grid(row=6, column=2, sticky='e', padx=self._pad, pady=(0, self._pad))
@@ -216,7 +225,10 @@ class Gui(Tk):
 
 	def _gen_drive_tree(self):
 		'''Refresh drive tree'''
-		new_drive_dump = self._drives.dump()
+		try:
+			new_drive_dump = self._drives.dump()
+		except:
+			new_drive_dump = self._drive_dump
 		if new_drive_dump != self._drive_dump:
 			self._drive_dump = new_drive_dump
 			self._drive_tree.delete(*self._drive_tree.get_children())
@@ -381,8 +393,6 @@ class Gui(Tk):
 		target = self._target_id
 		if logical := self._drives.get_children_of(self._target_id):
 			target += f' ({", ".join(logical)})'
-		if not askokcancel(title=self._labels.warning, message=self._labels.wipe_warning.replace('#', target)):
-			return
 		if ex := self._get_task():
 			showerror(title=self._labels.error, message=f'{type(ex)}: {ex}')
 			return
@@ -401,7 +411,7 @@ class Gui(Tk):
 		if ex := self._get_create():
 			showerror(title=self._labels.error, message=f'{type(ex)}: {ex}')
 			return
-		if self._config.create == 'none':
+		if self._config.create != 'none':
 			if ex := self._get_fs():
 				showerror(title=self._labels.error, message=f'{type(ex)}: {ex}')
 				return
@@ -412,6 +422,11 @@ class Gui(Tk):
 			self._config.save()
 		except:
 			showerror(title=self._labels.error, message=self._labels.start_replace('#', self.config.path))
+			return
+		if not self._config.task == 'verify' and not askokcancel(
+			title = self._labels.warning,
+			message = self._labels.wipe_warning.replace('#', target)
+		):
 			return
 		self._start_button.configure(state='disabled')
 		self._quit_text.set(self._labels.abort)
@@ -486,7 +501,8 @@ class Gui(Tk):
 		if isinstance(returncode, Exception):
 			self._info_text.configure(foreground=self._defs.red_fg, background=self._defs.red_bg)
 			self._warning_state = 'enable'
-			showerror(title=self._labels.error, message=f'{self._labels.aborted_on_error}\n\n{type(returncode)}:\n{returncode}')
+			if not self._shutdown.get():
+				showerror(title=self._labels.error, message=f'{self._labels.aborted_on_error}\n\n{type(returncode)}:\n{returncode}')
 		elif returncode:
 			self._info_text.configure(foreground=self._defs.green_fg, background=self._defs.green_bg)
 		if self._shutdown.get():	### Shutdown dialog ###

@@ -77,8 +77,8 @@ class Drives:
 
 	DELAY = 1
 	RETRIES = 10
-	NTFS_LABEL_CHARS = r'abcdefghijklmnopqrstuvwxyz!§$%&()@-_#=[]{}€'
-	FAT_LABEL_CHARS = r'abcdefghijklmnopqrstuvwxyz!§$%&()@-_#'
+	NTFS_LABEL_CHARS = r'abcdefghijklmnopqrstuvwxyz0123456789!§$%&()@-_#=[]{}€'
+	FAT_LABEL_CHARS = r'abcdefghijklmnopqrstuvwxyz0123456789!§$%&()@-_#'
 
 	def __init__(self):
 		'''Connect to API'''			
@@ -112,23 +112,50 @@ class Drives:
 		drives = dict()
 		for drive in self._conn.Win32_DiskDrive():
 			drives[drive.DeviceID] = dict()
-			try:
-				drives[drive.DeviceID]['Caption'] = drive.Caption
-			except AttributeError:
-				drives[drive.DeviceID]['Caption'] = ''
-			try:
-				drives[drive.DeviceID]['MediaType'] = drive.MediaType
-			except AttributeError:
-				drives[drive.DeviceID]['MediaType'] = ''
-			try:
-				drives[drive.DeviceID]['InterfaceType'] = drive.InterfaceType
-			except AttributeError:
-				drives[drive.DeviceID]['InterfaceType'] = ''
-			try:
-				drives[drive.DeviceID]['Size'] = Size(drive.Size)
-			except TypeError:
-				drives[drive.DeviceID]['Size'] = None
+			for attr in (
+				'Caption',
+				'MediaType',
+				'InterfaceType',
+				'Manufacturer',
+				'Model',
+				'Name',
+				'Size',
+			):
+				try:
+					value = getattr(drive, attr)
+					if attr == 'Size' and value is not None:
+						drives[drive.DeviceID][attr] = Size(value)
+					else:
+						drives[drive.DeviceID][attr] = value
+				except (AttributeError, TypeError):
+					drives[drive.DeviceID][attr] = None
 		return drives
+
+	def get_drive_info(self, device_id):
+		'''Get info about given drive'''
+		for drive in self._conn.Win32_DiskDrive():
+			if drive.DeviceID == device_id:
+				info = dict()
+				for attr in (
+					'Caption',
+					'Description',
+					'Size',
+					'InterfaceType', 
+					'MediaType',
+					'Manufacturer',
+					'Model',
+					'SerialNumber',
+					'FirmwareRevision'
+				):
+					try:
+						value = getattr(drive, attr)
+						if attr == 'Size' and value is not None:
+							info[attr] = Size(value)
+						else:
+							info[attr] = value
+					except (AttributeError, TypeError):
+						info[attr] = None
+				return info
 
 	def get_parents(self):
 		'''Return dict LOGICALDRIVE: PHYSICALDRIVE'''
@@ -190,7 +217,6 @@ class Drives:
 
 	def check_fs_label(self, label, fs):
 		'''Check if string would be a valid file system label'''
-		fs = fs.lower()
 		if fs == 'ntfs':
 			max_len = 32
 			valid_chars = self.NTFS_LABEL_CHARS
