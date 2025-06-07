@@ -68,7 +68,8 @@ class Wipe:
 		for attr, info in self._drives.get_drive_info(self._device_id).items():
 			if info:
 				msg += f'\n{attr}: {info}'
-		self._info(msg)
+		msg += '\n'
+		logging.info(msg)
 		self._echo(self._labels.executing.replace('#', f'{self._cmd[0].name} {" ".join(self._cmd[1:])}'))
 		self._old_part_ids = self._drives.get_children_of(self._device_id)
 		zd_proc = WinPopen(self._cmd)	### zd-win ###
@@ -89,8 +90,15 @@ class Wipe:
 			logging.shutdown()
 			return 'killed'
 		if stderr := zd_proc.stderr.read().strip():
-			self._error(self._labels.zd_error.replace('#', stderr))
-		if self._config.task != 'verify' and self._config.create != 'none':
+			if stderr.startswith('Error: found bad blocks:'):
+				msg = self._labels.bad_blocks_error.replace('#', stderr)
+				if self._config.task == 'verify' and self._config.create == 'none':
+					self._warning(msg)
+				else:
+					self._error(ChildProcessError(msg))
+			else:
+				self._error(ChildProcessError(self._labels.zd_error.replace('#', stderr)))
+		if  self._config.create != 'none':
 			if self._config.create != 'none' and self._config.fs:	### diskpart ###
 				new_volume_id = None	# do not assign drive
 				if self._config.create == 'none' or self._config.fs == 'none':
@@ -146,7 +154,6 @@ class Wipe:
 							echo = self._echo
 						)
 						self._warning(self._labels.no_free_letter)
-
 			if new_volume_id:
 				self._info(self._labels.finished)
 				self._echo(self._labels.drive_ready.replace('#', f'{new_volume_id}'))

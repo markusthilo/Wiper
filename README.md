@@ -12,6 +12,12 @@ Clone the repository. You need Python >= 3.12. The make batch script uses gcc (e
 ```
 $ python -m pip install -U nuitka
 ```
+or
+```
+$ python -m pip install -U "https://github.com/Nuitka/Nuitka/archive/develop.zip"
+```
+for the develop version. Nuitka downloads gcc by default to some folder like `C:\Users\...\AppData\Local\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\...\mingw64\bin\gcc.exe `.
+
 The batch make script `make-dist.bat` needs to be edited. You have to customize the path to gcc. Nuitka should work out of the box after it is installed via pip.
 
 Run the script:

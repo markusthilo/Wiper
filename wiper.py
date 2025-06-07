@@ -20,7 +20,7 @@ from tkinter.font import nametofont
 from tkinter.ttk import Frame, Label, Entry, Button, Combobox, Treeview
 from tkinter.ttk import Scrollbar, Spinbox, Progressbar
 from tkinter.scrolledtext import ScrolledText
-from tkinter.messagebox import showerror, askokcancel, askyesno
+from tkinter.messagebox import showerror, askokcancel, askyesno, showwarning
 from idlelib.tooltip import Hovertip
 from worker import Wipe
 from classes_wiper import Config, Drives
@@ -101,7 +101,7 @@ class Gui(Tk):
 		self._size_width = self._font['size'] * self._defs.tree_size
 		self._drive_frame = Frame(self)	### drive tree ###
 		self._drive_frame.grid(row=0, column=0, columnspan=3, sticky='nsew', padx=self._pad, pady=self._pad)
-		self._start_text = StringVar(value=self._labels.choose_target)	
+		self._start_text = StringVar(value=self._labels.select_target)	
 		self._start_button = None
 		self._drive_tree = Treeview(self._drive_frame,
 			selectmode = 'browse',
@@ -131,34 +131,37 @@ class Gui(Tk):
 		frame = Frame(self)	### value ###
 		frame.grid(row=1, column=1, sticky='nwe', pady=(0, self._pad))
 		label = Label(frame, text=f'{self._labels.value}:')
-		label.pack(side='left', padx=self._pad)
+		label.pack(side='left', padx=(self._pad, 0))
 		self._value_box = Spinbox(frame, values=tuple(f'{b:02x}' for b in range(0x100)), width=self._defs.box_width)
-		self._value_box.pack(side='right', padx=self._pad)
+		self._value_box.pack(side='right', padx=(0, self._pad))
 		self._value_box.set(self._config.value)
 		Hovertip(frame, self._labels.value_tip)
 		Hovertip(label, self._labels.value_tip)
 		frame = Frame(self)	### blocksize ###
 		frame.grid(row=1, column=2, sticky='nwe', pady=(0, self._pad))
-		Label(frame, text=f'{self._labels.blocksize}:').pack(side='left', padx=self._pad)
-		self._blocksize_box = Spinbox(frame, values=tuple(2**p for p in range(9, 16)), width=self._defs.box_width)
-		self._blocksize_box.pack(side='right', padx=self._pad)
+		Label(frame, text=f'{self._labels.blocksize}:').pack(side='left', padx=(self._pad, 0))
+		self._blocksize_box = Spinbox(frame,
+			values = (0x200, 0x400, 0x800) + tuple(0x1000 * p for p in range(1, 201)),
+			width= self._defs.box_width
+		)
+		self._blocksize_box.pack(side='right', padx=(0, self._pad))
 		self._blocksize_box.set(self._config.blocksize)
 		Hovertip(frame, self._labels.blocksize_tip)
 		frame = Frame(self)	### maxbadblocks ###
 		frame.grid(row=2, column=1, sticky='nwe')
 		label = Label(frame, text=f'{self._labels.maxbadblocks}:')
-		label.pack(side='left', padx=self._pad)
+		label.pack(side='left', padx=(self._pad, 0))
 		self._maxbadblocks_box = Spinbox(frame, from_=0, to=0xffff, width=self._defs.box_width)
-		self._maxbadblocks_box.pack(side='right', padx=self._pad)
+		self._maxbadblocks_box.pack(side='right', padx=(0, self._pad))
 		self._maxbadblocks_box.set(self._config.maxbadblocks)
 		Hovertip(frame, self._labels.maxbadblocks_tip)
 		Hovertip(label, self._labels.maxbadblocks_tip)
 		frame = Frame(self)	### maxretries ###
 		frame.grid(row=2, column=2, sticky='nwe')
 		label = Label(frame, text=f'{self._labels.maxretries}:')
-		label.pack(side='left', padx=self._pad)
+		label.pack(side='left', padx=(self._pad, 0))
 		self._maxretries_box = Spinbox(frame, from_=0, to=0xffff, width=self._defs.box_width)
-		self._maxretries_box.pack(side='right', padx=self._pad)
+		self._maxretries_box.pack(side='right', padx=(0, self._pad))
 		self._maxretries_box.set(self._config.maxretries)
 		Hovertip(frame, self._labels.maxretries_tip)
 		Hovertip(label, self._labels.maxretries_tip)
@@ -262,7 +265,7 @@ class Gui(Tk):
 					else:
 						self._drive_tree.insert(drv_id, 'end', text=part_id, values=values, iid=part_id)
 			if not self._target_id in current_ids and self._start_button:
-				self._start_text.set(self._labels.choose_target)
+				self._start_text.set(self._labels.select_target)
 				self._start_button.configure(state='disabled')
 				self._target_id = None
 
@@ -270,7 +273,7 @@ class Gui(Tk):
 		'''Run on double click'''
 		if item := self._drive_tree.identify('item', event.x, event.y):
 			if item in self._forbidden_ids:
-				self._start_text.set(self._labels.choose_target)
+				self._start_text.set(self._labels.select_target)
 				self._start_button.configure(state='disabled')
 				self._target_id = None
 				return
@@ -340,7 +343,7 @@ class Gui(Tk):
 			blocksize = int(self._blocksize_box.get())
 		except Exception as ex:
 			return ex
-		if blocksize < 0x100 or blocksize >= 0x8000 or blocksize % 0x100 != 0:
+		if blocksize < 0x100 or blocksize % 0x100 != 0:
 			return ValueError(f'invalid block size: {blocksize}')
 		self._config.blocksize = blocksize
 
@@ -382,10 +385,13 @@ class Gui(Tk):
 
 	def _get_label(self):
 		'''Get label and verify if it matches file system restrictions'''
-		try:
-			label = self._drives.check_fs_label(self._label.get(), self._config.fs)
-		except Exception as ex:
-			return ex
+		if self._config.fs != 'none':
+			try:
+				label = self._drives.check_fs_label(self._label.get(), self._config.fs)
+			except Exception as ex:
+				return
+		else:
+			label = self._label.get()
 		self._config.label = label
 
 	def _start(self):
@@ -411,23 +417,28 @@ class Gui(Tk):
 		if ex := self._get_create():
 			showerror(title=self._labels.error, message=f'{type(ex)}: {ex}')
 			return
-		if self._config.create != 'none':
-			if ex := self._get_fs():
-				showerror(title=self._labels.error, message=f'{type(ex)}: {ex}')
-				return
-			if ex := self._get_label():
-				showerror(title=self._labels.error, message=f'{self._labels.label_error}\n\n{type(ex)}: {ex}')
-				return
+		if ex := self._get_fs():
+			showerror(title=self._labels.error, message=f'{type(ex)}: {ex}')
+			return
+		if ex := self._get_label() and self._config.create != 'none' and self._config.fs != 'none':
+			showerror(title=self._labels.error, message=f'{self._labels.label_error}\n\n{type(ex)}: {ex}')
+			return
 		try:
 			self._config.save()
 		except:
 			showerror(title=self._labels.error, message=self._labels.start_replace('#', self.config.path))
 			return
-		if not self._config.task == 'verify' and not askokcancel(
-			title = self._labels.warning,
-			message = self._labels.wipe_warning.replace('#', target)
-		):
-			return
+		if self._config.task == 'verify':
+			if self._config.create != 'none' and not askokcancel(
+					title = self._labels.warning,
+					message = self._labels.verify_warning.replace('#', target)
+				):
+					return
+		elif not askokcancel(
+				title = self._labels.warning,
+				message = self._labels.wipe_warning.replace('#', target)
+			):
+				return
 		self._start_button.configure(state='disabled')
 		self._quit_text.set(self._labels.abort)
 		self._clear_info()
@@ -443,7 +454,7 @@ class Gui(Tk):
 
 	def _reset(self):
 		'''Reset buttons'''
-		self._start_text.set(self._labels.choose_target)
+		self._start_text.set(self._labels.select_target)
 		self._start_button.configure(state='disabled')
 		self._shutdown.set(False)
 		self._quit_text.set(self._labels.quit)
@@ -498,13 +509,6 @@ class Gui(Tk):
 		if returncode == 'killed':
 			self._reset()
 			return
-		if isinstance(returncode, Exception):
-			self._info_text.configure(foreground=self._defs.red_fg, background=self._defs.red_bg)
-			self._warning_state = 'enable'
-			if not self._shutdown.get():
-				showerror(title=self._labels.error, message=f'{self._labels.aborted_on_error}\n\n{type(returncode)}:\n{returncode}')
-		elif returncode:
-			self._info_text.configure(foreground=self._defs.green_fg, background=self._defs.green_bg)
 		if self._shutdown.get():	### Shutdown dialog ###
 			self._shutdown_window = Toplevel(self)
 			self._shutdown_window.title(self._labels.warning)
@@ -534,6 +538,17 @@ class Gui(Tk):
 			self._shutdown_window.geometry(f'+{pos_x}+{pos_y}')
 			self._shutdown_cnt = 0
 			self._delay_shutdown()
+		if isinstance(returncode, Exception):
+			self._info_text.configure(foreground=self._defs.red_fg, background=self._defs.red_bg)
+			self._warning_state = 'enable'
+			showerror(
+				title = self._labels.error, 
+				message = f'{self._labels.aborted_on_error}\n\n{type(returncode)}:\n{returncode}'
+			)
+		elif returncode:
+			self._info_text.configure(foreground=self._defs.green_fg, background=self._defs.green_bg)
+		else:
+			showwarning(title=self._labels.warning, message=self._labels.warnings_occured)
 		self._reset()
 
 if __name__ == '__main__':  # start here when run as application

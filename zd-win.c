@@ -142,10 +142,11 @@ void check_max_bad_blocks(target_t *target, const badblocks_t *badblocks) {
 	if ( badblocks->read + badblocks->write + badblocks->diff <= badblocks->max ) return;
 	close_target(target);
 	printf("\n\n");
-	fprintf(stderr, "Error: aborting after %d bad blocks: ", badblocks->max+1);
+	fprintf(stderr, "Error: found bad blocks: ");
 	fprintf(stderr, "%d write error(s), ", badblocks->write);
 	fprintf(stderr, "%d read error(S), ", badblocks->read);
-	fprintf(stderr, "%d unwiped byte(s)\n", badblocks->diff);
+	fprintf(stderr, "%d unwiped byte(s), ", badblocks->diff);
+	fprintf(stderr, "%d total, aborting! ", badblocks->max+1);
 	exit(1);
 }
 
