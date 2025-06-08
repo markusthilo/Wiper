@@ -4,7 +4,6 @@
 from json import load, dump
 from subprocess import Popen, PIPE, STDOUT, STARTUPINFO, STARTF_USESHOWWINDOW
 from wmi import WMI
-from time import sleep
 
 class Config:
 	'''Handle configuration file in JSON format'''

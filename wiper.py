@@ -3,7 +3,7 @@
 
 __application__ = 'Wiper'
 __description__ = 'Windows GUI tool to securely wipe drives with option to treat SSDs gently.'
-__version__ = '0.1.0_2025-06-07'
+__version__ = '0.1.1_2025-06-08'
 __status__ = 'Testing'
 __license__ = 'GPL-3'
 __author__ = 'Markus Thilo'
@@ -462,7 +462,7 @@ class Gui(Tk):
 		self._work_thread = None
 
 	def _quit_app(self):
-		'''Quit app, ask when wipe processs is running'''
+		'''Quit app or ask to abort process'''
 		if self._work_thread:	
 			if self._work_thread.kill_is_set():
 				self._reset()
