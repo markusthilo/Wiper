@@ -30,7 +30,13 @@ Be aware that Nuitka might not work with the newest Python version.
 
 ## Download
 
-Download the latest release from GitHub and unpack it anywhere. It is a portable application. No installation is required.
+Download the latest release from GitHub and unpack anywhere. The application is portable. No installation is required.
+
+It might be necessary to tweak BitDefender. The file wiper.exe could be classified as critical but the file or the entire Wiper folder can be added as an exception. To do so, access the following settings:
+
+`Settings > Windows Security > Virus & threat protection > Virus & thread protection settings > Manage settings > Exclusions > Add or remove exclusions`
+
+If the application is run as administrator. If you do not have the required privileges, there is no way to maske it work.
 
 ## Language
 

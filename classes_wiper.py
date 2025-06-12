@@ -47,7 +47,7 @@ class Size(int):
 			raise ValueError('Size must be positive')
 		iec, rnd_iec = _round(('PiB', 2**50), ('TiB', 2**40), ('GiB', 2**30), ('MiB', 2**20), ('kiB', 2**10))
 		si, rnd_si = _round(('PB', 10**15), ('TB', 10**12), ('GB', 10**9), ('MB', 10**6), ('kB', 10**3))
-		return (f'{iec} / {si} / ' if rnd_iec or rnd_si else '') + f'{int(self)} ' + ('byte' if self == 1 else 'bytes')
+		return (f'{iec} / {si}') if rnd_iec or rnd_si else f'{int(self)} B'
 
 	def __add__(self, other):
 		'''Plus'''

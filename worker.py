@@ -83,12 +83,10 @@ class Wipe:
 				self._echo('')
 			else:
 				self._info(msg)
-			if self._kill and self._kill.is_set():
-				self.zd_proc.kill()
-		if 	self._kill and self._kill.is_set():
-			self._info(self._labels.aborted_by_user)
-			logging.shutdown()
-			return 'killed'
+			if self._check_kill_signal():
+				zd_proc.terminate()
+				zd_proc.wait()
+				return
 		if stderr := zd_proc.stderr.read().strip():
 			if stderr.startswith('Error: found bad blocks:'):
 				msg = self._labels.bad_blocks_error.replace('#', stderr)
@@ -125,10 +123,8 @@ class Wipe:
 						verified_id_list.append(volume_id)
 					if verified_id_list:
 						for cnt, volume_id in enumerate(id_list):
-							if self._kill and self._kill.is_set():
-								self._info(self._labels.aborted_by_user)
-								logging.shutdown()
-								return('killed')
+							if self._check_kill_signal():
+								return
 							if cnt == 0:
 								self._info(self._labels.running_diskpart)
 							else:
@@ -168,36 +164,36 @@ class Wipe:
 			else:
 				self._warning(self._labels.warning_assign.replace('#', f'{drive_path}'))
 			self._warnings = True
+		self._info(self._labels.finished)
 		if self._warnings:
 			self._warning(self._labels.warnings_occured)
-			logging.shutdown()
-			return
-		self._info(self._labels.finished)
+		else:
+			returncode = True
 		logging.shutdown()
-		return True
+		return returncode
 
 	def _info(self, msg):
 		'''Log info and echo message'''
 		logging.info(msg)
 		self._echo(msg)
 
-	def _decode_exception(self, arg):
-		'''Decode exception'''
-		return f'{type(arg)}: {arg}' if isinstance(arg, Exception) else str(arg)
-
-	def _warning(self, arg):
+	def _warning(self, msg):
 		'''Log and echo warning'''
-		msg = self._decode_exception(arg)
 		logging.warning(msg)
-		self._echo(msg)
-		self._warnings = True
+		self._echo( f'{self._labels.warning}: msg')
 
-	def _error(self, arg):
-		'''Log and raise exception'''
-		msg = self._decode_exception(arg)
+	def _error(self, msg):
+		'''Log and echo error'''
 		logging.error(msg)
-		self._echo(msg)
 		logging.shutdown()
-		if isinstance(arg, Exception):
-			raise arg
-		raise RuntimeError(msg)
+		returncode = f'{self._labels.error}: msg'
+		self._echo(returncode)
+		return returncode
+
+	def _check_kill_signal(self):
+		'''Check if kill signal is set'''
+		if self._kill and self._kill.is_set():
+			self._info(self._labels.aborting_by_user)
+			logging.shutdown()
+			return True
+		return False

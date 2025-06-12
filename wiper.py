@@ -3,7 +3,7 @@
 
 __application__ = 'Wiper'
 __description__ = 'Windows GUI tool to securely wipe drives with option to treat SSDs gently.'
-__version__ = '0.1.1_2025-06-08'
+__version__ = '0.1.1_2025-06-12'
 __status__ = 'Testing'
 __license__ = 'GPL-3'
 __author__ = 'Markus Thilo'
@@ -35,7 +35,10 @@ class WorkThread(Thread):
 		super().__init__()
 		self._finish = finish
 		self._kill_event = Event()
-		self._worker = Wipe(target_id, echo=echo, kill=self._kill_event, finish=self._finish)
+		try:
+			self._worker = Wipe(target_id, echo=echo, kill=self._kill_event, finish=self._finish)
+		except Exception as ex:
+			self._finish(ex)
 
 	def kill(self):
 		'''Kill thread'''
@@ -52,8 +55,6 @@ class WorkThread(Thread):
 			returncode = self._worker.run()
 		except Exception as ex:
 			returncode = ex
-		if self.kill_is_set():
-			returncode = 'killed'
 		CoUninitialize()
 		self._finish(returncode)
 
@@ -82,11 +83,10 @@ class Gui(Tk):
 				self._forbidden_ids.add(drive_id)
 		self._drive_dump = None	# to check for changes
 		self.title(f'{__application__} v{__version__}')	### define the gui ###
-		self.rowconfigure(0, weight=1)
-		self.rowconfigure(5, weight=4)
-		self.columnconfigure(0, weight=1)
-		self.columnconfigure(1, weight=1)
-		self.columnconfigure(2, weight=1)
+		for row, weight in enumerate(self._defs.row_weights):
+			self.rowconfigure(row, weight=weight)
+		for column, weight in enumerate(self._defs.column_weights):
+			self.columnconfigure(column, weight=weight)
 		self.iconphoto(True, PhotoImage(file=__parent_path__ / 'appicon.png'))
 		self.protocol('WM_DELETE_WINDOW', self._quit_app)
 		self._font = nametofont('TkTextFont').actual()
@@ -201,22 +201,21 @@ class Gui(Tk):
 		self._info_fg = self._info_text.cget('foreground')
 		self._info_bg = self._info_text.cget('background')
 		self._info_newline = True
+		self._shutdown = BooleanVar(value=False)	### shutdown after finish
+		self._shutdown_button = Checkbutton(self,
+			text = self._labels.shutdown,
+			variable = self._shutdown,
+			command = self._toggle_shutdown
+		)
+		self._shutdown_button.grid(row=6, column=0, sticky='nsw', padx=self._pad, pady=(0, self._pad))
+		Hovertip(self._shutdown_button, self._labels.shutdown_tip)
 		self._info_label = Label(self)	### info label ###
-		self._info_label.grid(row=6, column=0, sticky='nsew', padx=self._pad, pady=(0, self._pad))
+		self._info_label.grid(row=6, column=1, sticky='nsw', padx=self._pad, pady=(0, self._pad))
 		self._label_fg = self._info_label.cget('foreground')
 		self._label_bg = self._info_label.cget('background')
-		self._shutdown = BooleanVar(value=False)	### shutdown after finish
-		frame = Frame(self)
-		frame.grid(row=6, column=1, sticky='nwe', pady=(0, self._pad))
-		label = Label(frame, text=f'{self._labels.shutdown}:')
-		label.pack(side='left', padx=self._pad)
-		self._shutdown_button = Checkbutton(frame, variable=self._shutdown, command=self._toggle_shutdown)
-		self._shutdown_button.pack(side='right', padx=self._pad)
-		Hovertip(frame, self._labels.shutdown_tip)
-		Hovertip(label, self._labels.shutdown_tip)
-		self._quit_text = StringVar(value=self._labels.quit)
-		self._quit_button = Button(self, textvariable=self._quit_text, command=self._quit_app)	### quit ###
-		self._quit_button.grid(row=6, column=2, sticky='e', padx=self._pad, pady=(0, self._pad))
+		self._quit_text = StringVar(value=self._labels.quit)	### quit ###
+		self._quit_button = Button(self, textvariable=self._quit_text, command=self._quit_app)
+		self._quit_button.grid(row=6, column=2, sticky='nse', padx=self._pad, pady=(0, self._pad))
 		Hovertip(self._quit_button, self._labels.quit_tip)
 		if windll.shell32.IsUserAnAdmin() == 0:
 			msg = self._labels.admin_required.replace('#', __application__)
@@ -492,6 +491,36 @@ class Gui(Tk):
 		else:
 			run(['shutdown', '/s'])
 
+	def _shutdown_dialog(self):
+		'''Show shutdown dialog'''
+		self._shutdown_window = Toplevel(self)
+		self._shutdown_window.title(self._labels.warning)
+		self._shutdown_window.transient(self)
+		self._shutdown_window.focus_set()
+		self._shutdown_window.resizable(False, False)
+		self._shutdown_window.grab_set()
+		frame = Frame(self._shutdown_window, padding=self._pad)
+		frame.pack(fill='both', expand=True)
+		Label(frame,
+			text = '\u26A0',
+			font = (self._font['family'], self._font['size'] * self._defs.symbol_factor),
+			foreground = self._defs.symbol_fg,
+			background = self._defs.symbol_bg
+		).pack(side='left', padx=self._pad, pady=self._pad)
+		Label(frame, text=self._labels.shutdown_question, anchor='s').pack(
+			side='right', fill='both', padx=self._pad, pady=self._pad
+		)
+		frame = Frame(self._shutdown_window, padding=self._pad)
+		frame.pack(fill='both', expand=True)
+		self._delay_progressbar = Progressbar(frame, mode='determinate', maximum=self._defs.shutdown_delay)
+		self._delay_progressbar.pack(side='top', fill='x', padx=self._pad, pady=self._pad)
+		cancel_button = Button(frame, text=self._labels.cancel_shutdown, command=self._shutdown_window.destroy)
+		cancel_button.pack(side='bottom', fill='both', padx=self._pad, pady=self._pad)
+		self.update_idletasks()
+		self._shutdown_cnt = 0
+		self._delay_shutdown()
+		self._shutdown_window.wait_window(self._shutdown_window)
+
 	def echo(self, *args, end=None):
 		'''Write message to info field (ScrolledText)'''
 		msg = ' '.join(f'{arg}' for arg in args)
@@ -506,49 +535,20 @@ class Gui(Tk):
 
 	def finished(self, returncode):
 		'''Run this when worker has finished copy process'''
-		if returncode == 'killed':
-			self._reset()
-			return
-		if self._shutdown.get():	### Shutdown dialog ###
-			self._shutdown_window = Toplevel(self)
-			self._shutdown_window.title(self._labels.warning)
-			self._shutdown_window.transient(self)
-			self._shutdown_window.resizable(False, False)
-			self._shutdown_window.grab_set()
-			frame = Frame(self._shutdown_window, padding=self._pad)
-			frame.pack(fill='both', expand=True)
-			Label(frame,
-				text = '\u26A0',
-				font = (self._font['family'], self._font['size'] * self._defs.symbol_factor),
-				foreground = self._defs.symbol_fg,
-				background = self._defs.symbol_bg
-			).pack(side='left', padx=self._pad, pady=self._pad)
-			Label(frame, text=self._labels.shutdown_question, anchor='s').pack(
-				side='right', fill='both', padx=self._pad, pady=self._pad
-			)
-			frame = Frame(self._shutdown_window, padding=self._pad)
-			frame.pack(fill='both', expand=True)
-			self._delay_progressbar = Progressbar(frame, mode='determinate', maximum=self._defs.shutdown_delay)
-			self._delay_progressbar.pack(side='top', fill='x', padx=self._pad, pady=self._pad)
-			cancel_button = Button(frame, text=self._labels.cancel_shutdown, command=self._shutdown_window.destroy)
-			cancel_button.pack(side='bottom', fill='both', padx=self._pad, pady=self._pad)
-			self.update_idletasks()
-			pos_x = self.winfo_rootx() + (self.winfo_width() // 2)
-			pos_y = self.winfo_rooty() + (self.winfo_height() // 2)
-			self._shutdown_window.geometry(f'+{pos_x}+{pos_y}')
-			self._shutdown_cnt = 0
-			self._delay_shutdown()
-		if isinstance(returncode, Exception):
-			self._info_text.configure(foreground=self._defs.red_fg, background=self._defs.red_bg)
-			self._warning_state = 'enable'
-			showerror(
-				title = self._labels.error, 
-				message = f'{self._labels.aborted_on_error}\n\n{type(returncode)}:\n{returncode}'
-			)
-		elif returncode:
-			self._info_text.configure(foreground=self._defs.green_fg, background=self._defs.green_bg)
-		else:
-			showwarning(title=self._labels.warning, message=self._labels.warnings_occured)
+		if returncode:
+			if self._shutdown.get():	### Shutdown dialog ###
+				self._shutdown_dialog()
+			if isinstance(returncode, Exception):
+				self._enable_warning()
+				showerror(
+					title = self._labels.error, 
+					message = f'{self._labels.aborted_on_error}\n\n{type(returncode)}:\n{returncode}'
+				)
+			elif isinstance(returncode, str):
+				self._enable_warning()
+				showwarning(title=self._labels.warning, message=self._labels.process_returned.replace('#', returncode))
+			else:
+				self._info_text.configure(foreground=self._defs.green_fg, background=self._defs.green_bg)
 		self._reset()
 
 if __name__ == '__main__':  # start here when run as application
