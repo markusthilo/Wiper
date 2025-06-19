@@ -3,7 +3,7 @@
 
 __application__ = 'Wiper'
 __description__ = 'Windows GUI tool to securely wipe drives with option to treat SSDs gently.'
-__version__ = '0.1.1_2025-06-12'
+__version__ = '0.2.0_2025-06-19'
 __status__ = 'Testing'
 __license__ = 'GPL-3'
 __author__ = 'Markus Thilo'
@@ -439,6 +439,14 @@ class Gui(Tk):
 			):
 				return
 		self._start_button.configure(state='disabled')
+		self._task_selector.configure(state='disabled')
+		self._value_box.configure(state='disabled')
+		self._maxbadblocks_box.configure(state='disabled')
+		self._maxretries_box.configure(state='disabled')
+		self._create_selector.configure(state='disabled')
+		self._fs_selector.configure(state='disabled')
+		self._label_entry.configure(state='disabled')
+		self._blocksize_box.configure(state='disabled')
 		self._quit_text.set(self._labels.abort)
 		self._clear_info()
 		self._work_thread = WorkThread(self._target_id, self.echo, self.finished)
@@ -455,6 +463,14 @@ class Gui(Tk):
 		'''Reset buttons'''
 		self._start_text.set(self._labels.select_target)
 		self._start_button.configure(state='disabled')
+		self._task_selector.configure(state='normal')
+		self._value_box.configure(state='normal')
+		self._maxbadblocks_box.configure(state='normal')
+		self._maxretries_box.configure(state='normal')
+		self._create_selector.configure(state='normal')
+		self._fs_selector.configure(state='normal')
+		self._label_entry.configure(state='normal')
+		self._blocksize_box.configure(state='normal')
 		self._shutdown.set(False)
 		self._quit_text.set(self._labels.quit)
 		self._target_id = None
@@ -481,6 +497,11 @@ class Gui(Tk):
 		except:
 			pass
 		self.destroy()
+
+	def _enable_warning(self):
+		'''Enable red text field and blinking Label'''
+		self._info_text.configure(foreground=self._defs.red_fg, background=self._defs.red_bg)
+		self._warning_state = 'enable'
 
 	def _delay_shutdown(self):
 		'''Delay shutdown and update progress bar'''

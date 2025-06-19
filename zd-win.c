@@ -5,7 +5,7 @@
 /* License: GPL-3 */
 
 /* Version */
-const char *VERSION = "1.1.0_2025-06-07";
+const char *VERSION = "1.2.0_2025-06-19";
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -198,24 +198,49 @@ void print_bad_blocks(badblocks_t *badblocks) {
 	printf("%d unwiped byte(s)\n", badblocks->diff);
 }
 
+/* Print time */
+void print_time(time_t t) {
+	int hours = t / 3600;
+	t -= hours * 3600;
+	int minutes = t / 60;
+	t -= minutes * 60;
+	if ( hours == 1 ) printf("1 hour, ");
+	else if ( hours > 1 ) printf("%d hours, ", hours);
+	if ( minutes == 1 ) printf("1 minute, ");
+	else if ( minutes > 1 ) printf("%d minutes, ", minutes);
+	if ( t == 1 ) printf("1 second");
+	else printf ("%d seconds", t);
+}
+
+/* Print time pass took */
+void print_proc_time(const time_t start_time) {
+	printf("\n\nProcess took ");
+	print_time(time(NULL) - start_time);
+	printf("\n");
+}
+
 /* Print progress */
-clock_t print_progress(const target_t *target) {
+clock_t print_progress(const target_t *target, const time_t start_time) {
 	//printf("\r...%*d%% / %*lld of%*lld bytes", 4, (int)((100*target->ptr)/target->size), 20, target->ptr, 20, target->size);
-	printf("\r... %d%% / %lld of %lld bytes",
-		(int)((100*target->ptr)/target->size), target->ptr, target->size);
+
+	float percent = (target->ptr * 100) / target->size;
+	printf("\r... %d%% / %lld of %lld bytes / ETA ", (int)percent, target->ptr, target->size);
+	time_t passed = time(NULL) - start_time;
+	print_time((time_t)(passed * (100 - percent) / percent ));
+	printf("                                  ");
 	fflush(stdout);
 	return time(NULL);
 }
 
 /* Wipe target, overwrite all */
-void wipe_all(target_t *target, const config_t *conf, badblocks_t *badblocks) {
+void wipe_all(target_t *target, const config_t *conf, badblocks_t *badblocks, time_t start_time) {
 	DWORD ret;	// to check the returned number of bytes
 	if ( target->size >= conf->bs ) {
-		clock_t now = print_progress(target);
+		clock_t now = print_progress(target, start_time);
 		for (off_t bc=0; bc<target->blocks; bc++) {
 			if ( !WriteFile(target->file, conf->block, conf->bs, &ret, NULL) || ret != conf->bs )
 				write_error(target, conf, badblocks, conf->bs);
-			if ( time(NULL) > now ) now = print_progress(target);
+			if ( time(NULL) > now ) now = print_progress(target, start_time);
 			target->ptr += conf->bs;
 		}
 	}
@@ -223,7 +248,7 @@ void wipe_all(target_t *target, const config_t *conf, badblocks_t *badblocks) {
 		if ( !WriteFile(target->file, conf->block, target->leftbytes, &ret, NULL) || ret != target->leftbytes )
 			write_error(target, conf, badblocks, target->leftbytes);
 	target->ptr = target->size;
-	print_progress(target);
+	print_progress(target, start_time);
 }
 
 /* Convert value of a command line argument to integer >= 0, return -1 if NULL */
@@ -234,22 +259,6 @@ int uint_arg(const char *value, const char arg) {
 	if ( strcmp(value, "0") == 0 ) return 0;
 	fprintf(stderr, "Error: -%c needs an unsigned integer value\n", arg);
 	exit(1);
-}
-
-/* Print time delta */
-void print_time(const time_t start_time) {
-	int delta = time(NULL) - start_time;
-	int hours = delta / 3600;
-	delta -= hours * 3600;
-	int minutes = delta / 60;
-	delta -= minutes * 60;
-	printf("\n\nProcess took ");
-	if ( hours == 1 ) printf("1 hour, ");
-	else if ( hours > 1 ) printf("%d hours, ", hours);
-	if ( minutes == 1 ) printf("1 minute, ");
-	else if ( minutes > 1 ) printf("%d minutes, ", minutes);
-	if ( delta == 1 ) printf("1 second\n");
-	else printf ("%d seconds\n", delta);
 }
 
 /* Main function - program starts here */
@@ -326,7 +335,7 @@ int main(int argc, char **argv) {
 		FILE_SHARE_READ | FILE_SHARE_WRITE,
 		NULL,
 		OPEN_EXISTING,
-		0,
+		FILE_FLAG_NO_BUFFERING | FILE_FLAG_WRITE_THROUGH,
 		NULL
 	);
 	if ( target.file == INVALID_HANDLE_VALUE ) {
@@ -381,17 +390,20 @@ int main(int argc, char **argv) {
 			if ( target.size >= conf.bs ) {
 				ULONGLONG *block = malloc(conf.bs);
 				DWORD ret;	// to check the returned number of bytes
-				clock_t now = print_progress(&target);
+				clock_t now = print_progress(&target, start_time);
 				for (LONGLONG bc=0; bc<target.blocks; bc++) {
 					if ( !ReadFile(target.file, block, conf.bs, &ret, NULL)
 						|| ret != conf.bs
 						|| check_block(block, &conf) == -1
 					) {	// overwrite block/page
 						set_pointer(&target, 0);
-						if ( !WriteFile(target.file, conf.block, conf.bs, &ret, NULL) || ret != conf.bs )
+						OVERLAPPED overlapped = {0};
+						overlapped.Offset = (DWORD)(target.ptr & 0xFFFFFFFF);
+						overlapped.OffsetHigh = (DWORD)(target.ptr >> 32);
+						if ( !WriteFile(target.file, conf.block, conf.bs, &ret, &overlapped) || ret != conf.bs )
 							write_error(&target, &conf, &badblocks, conf.bs);
 					}
-					if ( time(NULL) > now ) now = print_progress(&target);
+					if ( time(NULL) > now ) now = print_progress(&target, start_time);
 					target.ptr += conf.bs;
 				}
 				if ( target.leftbytes > 0 ) {
@@ -408,18 +420,18 @@ int main(int argc, char **argv) {
 				}
 			}
 			target.ptr = target.size;
-			print_progress(&target);
+			print_progress(&target, start_time);
 			break;
 		case 1:	// wipe all blocks
 			memset(conf.block, conf.value, conf.bs);
 			printf("Wiping, pass 1 of 2\n");
-			wipe_all(&target, &conf, &badblocks);
+			wipe_all(&target, &conf, &badblocks, start_time);
 			break;
 		case 2:	// 2pass wipe
 			for (int i=0; i<conf.bs; i++) conf.block[i] = (BYTE)rand();
 			printf("Wiping, pass 1 of 3\n");
-			wipe_all(&target, &conf, &badblocks);
-			print_time(start_time);
+			wipe_all(&target, &conf, &badblocks, start_time);
+			print_proc_time(start_time);
 			if ( badblocks.read + badblocks.write + badblocks.diff > 0 ) {
 				printf("Warning: finished 1st pass but found ");
 				print_bad_blocks(&badblocks);
@@ -429,7 +441,7 @@ int main(int argc, char **argv) {
 			time(&start_time);
 			memset(conf.block, conf.value, conf.bs);
 			printf("Wiping, pass 2 of 3\n");
-			wipe_all(&target, &conf, &badblocks);
+			wipe_all(&target, &conf, &badblocks, start_time);
 			if ( badblocks.read + badblocks.write + badblocks.diff > 0 ) {
 				printf("Warning: finished 2nd pass but found ");
 				print_bad_blocks(&badblocks);
@@ -439,7 +451,7 @@ int main(int argc, char **argv) {
 	}
 	if ( todo == 3 ) printf("Verifying\n");
 	else {
-		print_time(start_time);
+		print_proc_time(start_time);
 		if ( badblocks.read + badblocks.write + badblocks.diff > 0 ) {
 			printf("Warning: finished wiping but ");
 			print_bad_blocks(&badblocks);
@@ -454,7 +466,7 @@ int main(int argc, char **argv) {
 	if ( target.size >= conf.bs ) {	// verification pass
 		DWORD ret;	// to check the returned number of bytes
 		ULONGLONG *block = malloc(conf.bs);
-		clock_t now = print_progress(&target);
+		clock_t now = print_progress(&target, start_time);
 		for (LONGLONG bc=0; bc<target.blocks; bc++) {
 			if ( ( !ReadFile(target.file, block, conf.bs, &ret, NULL) || ret != conf.bs )
 				&& read_error(&target, &conf, &badblocks, conf.bs) == -1 ) {
@@ -462,7 +474,7 @@ int main(int argc, char **argv) {
 					continue;
 				}
 			if ( check_block(block, &conf) == -1 ) wipe_error(&target, &badblocks);
-			if ( time(NULL) > now ) now = print_progress(&target);
+			if ( time(NULL) > now ) now = print_progress(&target, start_time);
 			target.ptr += conf.bs;
 		}
 	}
@@ -475,8 +487,8 @@ int main(int argc, char **argv) {
 		) wipe_error(&target, &badblocks);
 		target.ptr = target.size;
 	}
-	print_progress(&target);
-	print_time(start_time);
+	print_progress(&target, start_time);
+	print_proc_time(start_time);
 	close_target(&target);
 	if ( badblocks.read + badblocks.write + badblocks.diff > 0 ) {
 		printf("Warning: all done but found ");

@@ -1,0 +1,1 @@
+{"application": "Wiper", "version": "0.2.0_2025-06-19", "task": "selective", "value": "00", "blocksize": 4096, "maxbadblocks": 200, "maxretries": 200, "create": "mbr", "fs": "exfat", "label": "Volume"}
