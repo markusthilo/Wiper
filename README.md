@@ -1,3 +1,6 @@
+> [!NOTE]
+> Migrated to https://codeberg.org/markusthilo/Wiper
+
 # Wiper
 
 Windows GUI tool written in Python and C to securely wipe drives with an option to treat SSDs gently.
